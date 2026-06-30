@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes } = body;
+  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber } = body;
 
   // --- Validation ---
   if (!isValidType(type)) {
@@ -54,17 +54,29 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const trimmedIsin = typeof isin === "string" ? isin.trim() : null;
+  const trimmedFolio = typeof folioNumber === "string" ? folioNumber.trim() : null;
+
   // --- Duplicate / merge check ---
-  const existing = await prisma.holding.findFirst({
-    where: {
-      type,
-      name: { equals: trimmedName, mode: "insensitive" },
-    },
-  });
+  // Priority 1: ISIN match (only when both incoming and existing have an ISIN)
+  let existing = null;
+  if (trimmedIsin) {
+    existing = await prisma.holding.findFirst({
+      where: { type, isin: trimmedIsin },
+    });
+  }
+
+  // Priority 2: name+type match (case-insensitive) if no ISIN match
+  if (!existing) {
+    existing = await prisma.holding.findFirst({
+      where: {
+        type,
+        name: { equals: trimmedName, mode: "insensitive" },
+      },
+    });
+  }
 
   if (existing) {
-    // Merge: quantities add up (null treated as 0), investedValue adds up,
-    // currentValue is replaced with the latest submitted value.
     const mergedQuantity =
       existing.quantity != null || quantity != null
         ? (existing.quantity ?? 0) + (quantity ?? 0)
@@ -77,6 +89,10 @@ export async function POST(request: NextRequest) {
         investedValue: existing.investedValue + investedValue,
         currentValue,
         ...(notes != null && { notes }),
+        // Store ISIN if incoming has one and existing does not
+        ...(trimmedIsin && !existing.isin && { isin: trimmedIsin }),
+        // Always take the latest folio number if provided
+        ...(trimmedFolio && { folioNumber: trimmedFolio }),
       },
     });
 
@@ -92,6 +108,8 @@ export async function POST(request: NextRequest) {
       investedValue,
       currentValue,
       notes: notes ?? null,
+      isin: trimmedIsin || null,
+      folioNumber: trimmedFolio || null,
       source: "MANUAL",
     },
   });

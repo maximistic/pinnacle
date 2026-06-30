@@ -11,6 +11,8 @@ export type Holding = {
   currentValue: number;
   notes: string | null;
   source: string;
+  isin: string | null;
+  folioNumber: string | null;
 };
 
 export type TypeOption = { value: string; label: string };
@@ -21,11 +23,18 @@ type FormState = {
   quantity: string;
   investedValue: string;
   currentValue: string;
+  isin: string;
+  folioNumber: string;
 };
 
 type FormErrors = Partial<
   Record<"name" | "quantity" | "investedValue" | "currentValue", string>
 >;
+
+type ExtraCols = {
+  avgLabel: string;     // e.g. "Avg Price" or "Avg NAV"
+  currentLabel: string; // e.g. "Current Price" or "Current NAV"
+};
 
 type Props = {
   title: string;
@@ -35,6 +44,14 @@ type Props = {
   fixedType?: string;
   typeOptions?: TypeOption[];
   showQuantity?: boolean;
+  /** Column header for the quantity column — "Qty" for Stocks, "Units" for MF */
+  quantityLabel?: string;
+  /** When set, adds calculated Avg and Current per-unit columns */
+  extraCols?: ExtraCols;
+  /** Show ISIN field in the add/edit form */
+  showIsin?: boolean;
+  /** Show Folio Number field in the add/edit form */
+  showFolioNumber?: boolean;
 };
 
 const inputCls =
@@ -48,6 +65,11 @@ function fmt(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function calcPerUnit(value: number, qty: number | null): string {
+  if (qty == null || qty === 0) return "—";
+  return fmt(value / qty);
 }
 
 function Field({
@@ -68,9 +90,7 @@ function Field({
         {required && <span className="text-loss ml-0.5">*</span>}
       </label>
       {children}
-      {error && (
-        <p className="text-[10px] text-loss mt-1">{error}</p>
-      )}
+      {error && <p className="text-[10px] text-loss mt-1">{error}</p>}
     </div>
   );
 }
@@ -118,12 +138,25 @@ export default function HoldingsTable({
   fixedType,
   typeOptions,
   showQuantity = true,
+  quantityLabel = "Qty",
+  extraCols,
+  showIsin = false,
+  showFolioNumber = false,
 }: Props) {
   const showTypeColumn = !!typeOptions;
+  const hasExtraCols = !!extraCols && showQuantity;
   const defaultType = typeOptions?.[0]?.value ?? fixedType ?? "";
 
   function makeEmptyForm(): FormState {
-    return { type: defaultType, name: "", quantity: "", investedValue: "", currentValue: "" };
+    return {
+      type: defaultType,
+      name: "",
+      quantity: "",
+      investedValue: "",
+      currentValue: "",
+      isin: "",
+      folioNumber: "",
+    };
   }
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
@@ -138,7 +171,6 @@ export default function HoldingsTable({
 
   const filterKey = filterTypes?.join(",");
 
-  // Auto-dismiss merge notification after 5 s
   useEffect(() => {
     if (!mergeMessage) return;
     const t = setTimeout(() => setMergeMessage(null), 5000);
@@ -178,6 +210,8 @@ export default function HoldingsTable({
       quantity: h.quantity != null ? String(h.quantity) : "",
       investedValue: String(h.investedValue),
       currentValue: String(h.currentValue),
+      isin: h.isin ?? "",
+      folioNumber: h.folioNumber ?? "",
     });
     setFormErrors({});
     setSubmitError(null);
@@ -191,7 +225,6 @@ export default function HoldingsTable({
     setSubmitError(null);
   }
 
-  // Clear a single field's error as soon as the user edits it
   function clearFieldError(field: keyof FormErrors) {
     if (formErrors[field]) {
       setFormErrors((prev) => ({ ...prev, [field]: undefined }));
@@ -201,7 +234,6 @@ export default function HoldingsTable({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Client-side validation
     const errors = validateForm(form, showQuantity);
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -219,6 +251,10 @@ export default function HoldingsTable({
         quantity: showQuantity && form.quantity !== "" ? parseFloat(form.quantity) : null,
         investedValue: parseFloat(form.investedValue),
         currentValue: parseFloat(form.currentValue),
+        // Send isin/folioNumber only when the form exposes those fields;
+        // null explicitly clears the field, undefined omits it from the payload.
+        isin: showIsin ? (form.isin.trim() || null) : undefined,
+        folioNumber: showFolioNumber ? (form.folioNumber.trim() || null) : undefined,
       };
 
       const isAdd = modalMode === "add";
@@ -270,7 +306,14 @@ export default function HoldingsTable({
   const totalInvested = holdings.reduce((s, h) => s + h.investedValue, 0);
   const totalCurrent = holdings.reduce((s, h) => s + h.currentValue, 0);
   const totalGain = totalCurrent - totalInvested;
-  const colCount = (showTypeColumn ? 1 : 0) + 1 + (showQuantity ? 1 : 0) + 3 + 1;
+
+  const colCount =
+    (showTypeColumn ? 1 : 0) +
+    1 + // Name
+    (showQuantity ? 1 : 0) +
+    (hasExtraCols ? 2 : 0) + // Avg + Current per-unit
+    3 + // Invested + Current + Gain/Loss
+    1; // Actions
 
   return (
     <main className="p-6 text-foreground">
@@ -287,14 +330,12 @@ export default function HoldingsTable({
         </button>
       </div>
 
-      {/* Load error */}
       {loadError && (
         <div className="mb-4 px-3 py-2 text-xs border border-loss/40 text-loss bg-loss/5">
           {loadError}
         </div>
       )}
 
-      {/* Merge notification */}
       {mergeMessage && (
         <div className="mb-4 px-3 py-2 text-xs border border-gain/40 text-gain bg-gain/5 flex items-center justify-between">
           <span>{mergeMessage}</span>
@@ -318,7 +359,13 @@ export default function HoldingsTable({
               )}
               <th className="px-4 py-2.5 text-left font-medium">Name</th>
               {showQuantity && (
-                <th className="px-4 py-2.5 text-right font-medium">Qty</th>
+                <th className="px-4 py-2.5 text-right font-medium">{quantityLabel}</th>
+              )}
+              {hasExtraCols && (
+                <>
+                  <th className="px-4 py-2.5 text-right font-medium">{extraCols!.avgLabel}</th>
+                  <th className="px-4 py-2.5 text-right font-medium">{extraCols!.currentLabel}</th>
+                </>
               )}
               <th className="px-4 py-2.5 text-right font-medium">Invested (₹)</th>
               <th className="px-4 py-2.5 text-right font-medium">Current (₹)</th>
@@ -357,6 +404,16 @@ export default function HoldingsTable({
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted tabular-nums">
                         {h.quantity != null ? h.quantity : "—"}
                       </td>
+                    )}
+                    {hasExtraCols && (
+                      <>
+                        <td className="px-4 py-2.5 text-right font-mono text-xs text-muted tabular-nums">
+                          {calcPerUnit(h.investedValue, h.quantity)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono text-xs text-muted tabular-nums">
+                          {calcPerUnit(h.currentValue, h.quantity)}
+                        </td>
+                      </>
                     )}
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground tabular-nums">
                       {fmt(h.investedValue)}
@@ -400,6 +457,12 @@ export default function HoldingsTable({
                   Total
                 </td>
                 {showQuantity && <td className="px-4 py-2.5" />}
+                {hasExtraCols && (
+                  <>
+                    <td className="px-4 py-2.5" />
+                    <td className="px-4 py-2.5" />
+                  </>
+                )}
                 <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground tabular-nums font-medium">
                   {fmt(totalInvested)}
                 </td>
@@ -427,12 +490,11 @@ export default function HoldingsTable({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
-          <div className="w-full max-w-sm border border-edge bg-surface p-6">
+          <div className="w-full max-w-sm border border-edge bg-surface p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="text-[10px] uppercase tracking-widest text-muted mb-5">
               {modalMode === "add" ? `Add ${addLabel}` : `Edit ${addLabel}`}
             </h2>
 
-            {/* Server-side / network error */}
             {submitError && (
               <div className="mb-4 px-3 py-2 text-[10px] border border-loss/40 text-loss bg-loss/5">
                 {submitError}
@@ -470,7 +532,7 @@ export default function HoldingsTable({
               </Field>
 
               {showQuantity && (
-                <Field label="Quantity" error={formErrors.quantity}>
+                <Field label={quantityLabel} error={formErrors.quantity}>
                   <input
                     type="number"
                     value={form.quantity}
@@ -515,6 +577,31 @@ export default function HoldingsTable({
                   placeholder="e.g. 55000"
                 />
               </Field>
+
+              {showIsin && (
+                <Field label="ISIN">
+                  <input
+                    type="text"
+                    value={form.isin}
+                    onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. INE001A01036"
+                    maxLength={12}
+                  />
+                </Field>
+              )}
+
+              {showFolioNumber && (
+                <Field label="Folio Number">
+                  <input
+                    type="text"
+                    value={form.folioNumber}
+                    onChange={(e) => setForm((f) => ({ ...f, folioNumber: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. 1234567/89"
+                  />
+                </Field>
+              )}
 
               <div className="flex gap-2 pt-1">
                 <button

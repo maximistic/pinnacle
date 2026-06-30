@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/parse-cas.py": {
+      "maxDuration": 30
+    }
+  }
+}

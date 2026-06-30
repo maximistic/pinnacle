@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "/stocks", label: "Stocks" },
   { href: "/mutual-funds", label: "Mutual Funds" },
   { href: "/others", label: "Others" },
+  { href: "/upload", label: "Upload CAS" },
 ];
 
 export default function NavBar() {

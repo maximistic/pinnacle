@@ -7,7 +7,8 @@ type Params = { params: Promise<{ id: string }> };
 export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes, source } = body;
+  const { type, name, quantity, investedValue, currentValue, notes, source, isin, folioNumber } =
+    body;
 
   const existing = await prisma.holding.findUnique({ where: { id } });
   if (!existing) {
@@ -66,6 +67,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
       ...(currentValue !== undefined && { currentValue }),
       ...(notes !== undefined && { notes }),
       ...(source !== undefined && { source }),
+      ...(isin !== undefined && {
+        isin: typeof isin === "string" ? isin.trim() || null : null,
+      }),
+      ...(folioNumber !== undefined && {
+        folioNumber: typeof folioNumber === "string" ? folioNumber.trim() || null : null,
+      }),
     },
   });
 

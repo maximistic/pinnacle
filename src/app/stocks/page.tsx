@@ -7,6 +7,9 @@ export default function StocksPage() {
       addLabel="Stock"
       apiType="STOCK"
       fixedType="STOCK"
+      quantityLabel="Qty"
+      extraCols={{ avgLabel: "Avg Price", currentLabel: "Current Price" }}
+      showIsin
     />
   );
 }

@@ -20,6 +20,8 @@ model Holding {
   investedValue  Float
   currentValue   Float
   notes          String?
+  isin           String?  // Securities identifier (ISIN), optional
+  folioNumber    String?  // Mutual fund folio number, only relevant for MUTUAL_FUND
   source         String   @default("MANUAL") // MANUAL | CAS_UPLOAD
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
