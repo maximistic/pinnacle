@@ -23,6 +23,10 @@ type FormState = {
   currentValue: string;
 };
 
+type FormErrors = Partial<
+  Record<"name" | "quantity" | "investedValue" | "currentValue", string>
+>;
+
 type Props = {
   title: string;
   addLabel: string;
@@ -49,10 +53,12 @@ function fmt(n: number) {
 function Field({
   label,
   required,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -62,8 +68,46 @@ function Field({
         {required && <span className="text-loss ml-0.5">*</span>}
       </label>
       {children}
+      {error && (
+        <p className="text-[10px] text-loss mt-1">{error}</p>
+      )}
     </div>
   );
+}
+
+function validateForm(form: FormState, showQuantity: boolean): FormErrors {
+  const errors: FormErrors = {};
+
+  if (!form.name.trim()) {
+    errors.name = "Name is required";
+  }
+
+  if (showQuantity && form.quantity !== "") {
+    const qty = parseFloat(form.quantity);
+    if (isNaN(qty) || qty <= 0) {
+      errors.quantity = "Quantity must be a positive number";
+    }
+  }
+
+  if (form.investedValue === "") {
+    errors.investedValue = "Invested value is required";
+  } else {
+    const val = parseFloat(form.investedValue);
+    if (isNaN(val) || val < 0) {
+      errors.investedValue = "Invested value must be non-negative";
+    }
+  }
+
+  if (form.currentValue === "") {
+    errors.currentValue = "Current value is required";
+  } else {
+    const val = parseFloat(form.currentValue);
+    if (isNaN(val) || val < 0) {
+      errors.currentValue = "Current value must be non-negative";
+    }
+  }
+
+  return errors;
 }
 
 export default function HoldingsTable({
@@ -84,16 +128,26 @@ export default function HoldingsTable({
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [modalMode, setModalMode] = useState<null | "add" | string>(null);
   const [form, setForm] = useState<FormState>(makeEmptyForm);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [mergeMessage, setMergeMessage] = useState<string | null>(null);
 
   const filterKey = filterTypes?.join(",");
 
+  // Auto-dismiss merge notification after 5 s
+  useEffect(() => {
+    if (!mergeMessage) return;
+    const t = setTimeout(() => setMergeMessage(null), 5000);
+    return () => clearTimeout(t);
+  }, [mergeMessage]);
+
   const fetchHoldings = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
       const url = apiType ? `/api/holdings?type=${apiType}` : "/api/holdings";
       const res = await fetch(url);
@@ -102,7 +156,7 @@ export default function HoldingsTable({
       const keys = filterKey?.split(",");
       setHoldings(keys ? data.filter((h) => keys.includes(h.type)) : data);
     } catch {
-      setError("Could not load holdings.");
+      setLoadError("Could not load holdings.");
     } finally {
       setLoading(false);
     }
@@ -112,6 +166,8 @@ export default function HoldingsTable({
 
   function openAdd() {
     setForm(makeEmptyForm());
+    setFormErrors({});
+    setSubmitError(null);
     setModalMode("add");
   }
 
@@ -123,17 +179,39 @@ export default function HoldingsTable({
       investedValue: String(h.investedValue),
       currentValue: String(h.currentValue),
     });
+    setFormErrors({});
+    setSubmitError(null);
     setModalMode(h.id);
   }
 
   function closeModal() {
     setModalMode(null);
     setForm(makeEmptyForm());
+    setFormErrors({});
+    setSubmitError(null);
+  }
+
+  // Clear a single field's error as soon as the user edits it
+  function clearFieldError(field: keyof FormErrors) {
+    if (formErrors[field]) {
+      setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Client-side validation
+    const errors = validateForm(form, showQuantity);
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
+    setFormErrors({});
+    setSubmitError(null);
     setSubmitting(true);
+
     try {
       const body = {
         type: fixedType ?? form.type,
@@ -142,6 +220,7 @@ export default function HoldingsTable({
         investedValue: parseFloat(form.investedValue),
         currentValue: parseFloat(form.currentValue),
       };
+
       const isAdd = modalMode === "add";
       const res = await fetch(
         isAdd ? "/api/holdings" : `/api/holdings/${modalMode}`,
@@ -151,11 +230,27 @@ export default function HoldingsTable({
           body: JSON.stringify(body),
         }
       );
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSubmitError(
+          (data as { error?: string }).error ?? "Something went wrong. Please try again."
+        );
+        return;
+      }
+
+      const data = await res.json();
+      const wasMerged = isAdd && data.merged === true;
+      const mergedName: string = wasMerged ? data.name : "";
+
       closeModal();
       await fetchHoldings();
+
+      if (wasMerged) {
+        setMergeMessage(`Merged with existing holding: ${mergedName}`);
+      }
     } catch {
-      alert("Something went wrong. Please try again.");
+      setSubmitError("Network error. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +270,6 @@ export default function HoldingsTable({
   const totalInvested = holdings.reduce((s, h) => s + h.investedValue, 0);
   const totalCurrent = holdings.reduce((s, h) => s + h.currentValue, 0);
   const totalGain = totalCurrent - totalInvested;
-
   const colCount = (showTypeColumn ? 1 : 0) + 1 + (showQuantity ? 1 : 0) + 3 + 1;
 
   return (
@@ -193,9 +287,24 @@ export default function HoldingsTable({
         </button>
       </div>
 
-      {error && (
+      {/* Load error */}
+      {loadError && (
         <div className="mb-4 px-3 py-2 text-xs border border-loss/40 text-loss bg-loss/5">
-          {error}
+          {loadError}
+        </div>
+      )}
+
+      {/* Merge notification */}
+      {mergeMessage && (
+        <div className="mb-4 px-3 py-2 text-xs border border-gain/40 text-gain bg-gain/5 flex items-center justify-between">
+          <span>{mergeMessage}</span>
+          <button
+            onClick={() => setMergeMessage(null)}
+            className="ml-3 text-muted hover:text-foreground transition-colors"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 
@@ -241,9 +350,7 @@ export default function HoldingsTable({
                     className="border-b border-edge hover:bg-white/1.5 transition-colors"
                   >
                     {showTypeColumn && (
-                      <td className="px-4 py-2.5 text-xs text-muted">
-                        {typeLabel}
-                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted">{typeLabel}</td>
                     )}
                     <td className="px-4 py-2.5 text-sm text-foreground">{h.name}</td>
                     {showQuantity && (
@@ -324,14 +431,21 @@ export default function HoldingsTable({
             <h2 className="text-[10px] uppercase tracking-widest text-muted mb-5">
               {modalMode === "add" ? `Add ${addLabel}` : `Edit ${addLabel}`}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Server-side / network error */}
+            {submitError && (
+              <div className="mb-4 px-3 py-2 text-[10px] border border-loss/40 text-loss bg-loss/5">
+                {submitError}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               {typeOptions && (
                 <Field label="Type" required>
                   <select
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
                     className={selectCls}
-                    required
                   >
                     {typeOptions.map((o) => (
                       <option key={o.value} value={o.value} style={{ background: "#131615" }}>
@@ -341,22 +455,29 @@ export default function HoldingsTable({
                   </select>
                 </Field>
               )}
-              <Field label="Name" required>
+
+              <Field label="Name" required error={formErrors.name}>
                 <input
                   type="text"
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  required
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, name: e.target.value }));
+                    clearFieldError("name");
+                  }}
                   className={inputCls}
                   placeholder="Enter name"
                 />
               </Field>
+
               {showQuantity && (
-                <Field label="Quantity">
+                <Field label="Quantity" error={formErrors.quantity}>
                   <input
                     type="number"
                     value={form.quantity}
-                    onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, quantity: e.target.value }));
+                      clearFieldError("quantity");
+                    }}
                     step="any"
                     min="0"
                     className={inputCls}
@@ -364,30 +485,37 @@ export default function HoldingsTable({
                   />
                 </Field>
               )}
-              <Field label="Invested Value (₹)" required>
+
+              <Field label="Invested Value (₹)" required error={formErrors.investedValue}>
                 <input
                   type="number"
                   value={form.investedValue}
-                  onChange={(e) => setForm((f) => ({ ...f, investedValue: e.target.value }))}
-                  required
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, investedValue: e.target.value }));
+                    clearFieldError("investedValue");
+                  }}
                   step="any"
                   min="0"
                   className={inputCls}
                   placeholder="e.g. 50000"
                 />
               </Field>
-              <Field label="Current Value (₹)" required>
+
+              <Field label="Current Value (₹)" required error={formErrors.currentValue}>
                 <input
                   type="number"
                   value={form.currentValue}
-                  onChange={(e) => setForm((f) => ({ ...f, currentValue: e.target.value }))}
-                  required
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, currentValue: e.target.value }));
+                    clearFieldError("currentValue");
+                  }}
                   step="any"
                   min="0"
                   className={inputCls}
                   placeholder="e.g. 55000"
                 />
               </Field>
+
               <div className="flex gap-2 pt-1">
                 <button
                   type="submit"
