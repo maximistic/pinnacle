@@ -11,3 +11,16 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Holding {
+  id             String   @id @default(cuid())
+  type           String   // STOCK | MUTUAL_FUND | FD | GOLD | REAL_ESTATE | OTHER
+  name           String
+  quantity       Float?   // units/shares, null for FD/real estate
+  investedValue  Float
+  currentValue   Float
+  notes          String?
+  source         String   @default("MANUAL") // MANUAL | CAS_UPLOAD
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
