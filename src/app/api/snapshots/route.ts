@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
-  const snapshots = await prisma.snapshot.findMany({
-    orderBy: { date: "asc" },
-  });
-  return NextResponse.json(snapshots);
+  try {
+    const snapshots = await prisma.snapshot.findMany({
+      orderBy: { date: "asc" },
+    });
+    return NextResponse.json(snapshots);
+  } catch (err) {
+    console.error("GET snapshots error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST() {
+  try {
   const holdings = await prisma.holding.findMany();
 
   const totalValue = holdings.reduce((s, h) => s + h.currentValue, 0);
@@ -44,16 +50,25 @@ export async function POST() {
       });
 
   return NextResponse.json(snapshot, { status: existing ? 200 : 201 });
+  } catch (err) {
+    console.error("POST snapshot error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function DELETE(request: NextRequest) {
-  const body = await request.json().catch(() => ({}));
-  if (body.all === true) {
-    const result = await prisma.snapshot.deleteMany();
+  try {
+    const body = await request.json().catch(() => ({}));
+    if (body.all === true) {
+      const result = await prisma.snapshot.deleteMany();
+      return NextResponse.json({ count: result.count });
+    }
+    const ids: string[] = body.ids ?? [];
+    if (ids.length === 0) return NextResponse.json({ count: 0 });
+    const result = await prisma.snapshot.deleteMany({ where: { id: { in: ids } } });
     return NextResponse.json({ count: result.count });
+  } catch (err) {
+    console.error("DELETE snapshots error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-  const ids: string[] = body.ids ?? [];
-  if (ids.length === 0) return NextResponse.json({ count: 0 });
-  const result = await prisma.snapshot.deleteMany({ where: { id: { in: ids } } });
-  return NextResponse.json({ count: result.count });
 }

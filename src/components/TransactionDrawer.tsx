@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Holding } from "@/components/HoldingsTable";
+import { formatINR } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ type Props = {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatINR(n);
 }
 
 function fmtDate(iso: string) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isDue, processRule, type RecurringRule } from "@/lib/recurringEngine";
+import { batchUpdatePrices } from "@/lib/priceFetcher";
 
 async function takeSnapshot() {
   const holdings = await prisma.holding.findMany();
@@ -81,10 +82,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Update prices after processing recurring rules
+  let prices = { updated: 0, failed: 0, skipped: 0 };
+  try {
+    prices = await batchUpdatePrices();
+  } catch {
+    // price update is non-fatal
+  }
+
   return NextResponse.json({
     processed,
     failed,
     snapshotCreated,
+    prices,
     timestamp: now.toISOString(),
   });
 }

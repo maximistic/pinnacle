@@ -2,17 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const holdingId = searchParams.get("holdingId");
-  const rules = await prisma.recurringRule.findMany({
-    where: holdingId ? { holdingId } : undefined,
-    include: { holding: { select: { name: true, type: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  return NextResponse.json(rules);
+  try {
+    const { searchParams } = new URL(request.url);
+    const holdingId = searchParams.get("holdingId");
+    const rules = await prisma.recurringRule.findMany({
+      where: holdingId ? { holdingId } : undefined,
+      include: { holding: { select: { name: true, type: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(rules);
+  } catch (err) {
+    console.error("GET recurring rules error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
+  try {
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
 
@@ -76,4 +82,8 @@ export async function POST(request: NextRequest) {
   });
 
   return NextResponse.json(rule, { status: 201 });
+  } catch (err) {
+    console.error("POST recurring rule error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

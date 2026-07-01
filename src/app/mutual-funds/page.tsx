@@ -18,6 +18,8 @@ export default function MutualFundsPage() {
         extraCols={{ avgLabel: "Avg NAV", currentLabel: "Current NAV" }}
         showIsin
         showFolioNumber
+        showAmfi={true}
+        showPriceRefresh={true}
         onRowClick={setSelected}
         emptyMessage="No mutual funds yet. Upload your CAS or add manually."
       />

@@ -5,9 +5,14 @@ import { generateHistoricalTransactions, type RecurringRule } from "@/lib/recurr
 type Params = { params: Promise<{ id: string }> };
 
 export async function POST(_request: NextRequest, { params }: Params) {
-  const { id } = await params;
-  const rule = await prisma.recurringRule.findUnique({ where: { id } });
-  if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });
-  const txns = await generateHistoricalTransactions(rule as RecurringRule);
-  return NextResponse.json({ count: txns.length });
+  try {
+    const { id } = await params;
+    const rule = await prisma.recurringRule.findUnique({ where: { id } });
+    if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });
+    const txns = await generateHistoricalTransactions(rule as RecurringRule);
+    return NextResponse.json({ count: txns.length });
+  } catch (err) {
+    console.error("Backfill error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
