@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber } = body;
+  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source } = body;
 
   // --- Validation ---
   if (!isValidType(type)) {
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       notes: notes ?? null,
       isin: trimmedIsin || null,
       folioNumber: trimmedFolio || null,
-      source: "MANUAL",
+      source: source === "CAS_UPLOAD" ? "CAS_UPLOAD" : "MANUAL",
     },
   });
 
