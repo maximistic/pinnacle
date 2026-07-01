@@ -24,6 +24,39 @@ def _parse(pdf_bytes: bytes, password: str) -> dict:
     return json.loads(raw_json)
 
 
+def _safe_float(val):
+    """Convert Decimal-serialised strings or numbers to float; return None for null/empty."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _build_transactions(scheme: dict) -> list:
+    txns = []
+    for t in scheme.get("transactions") or []:
+        raw_date = t.get("date")
+        if not raw_date:
+            continue
+        # date may be a "YYYY-MM-DD" string or a date object stringified
+        date_str = str(raw_date)[:10]
+        description = str(t.get("description") or "").strip()
+        txns.append(
+            {
+                "date": date_str,
+                "description": description,
+                "amount": _safe_float(t.get("amount")),
+                "units": _safe_float(t.get("units")),
+                "nav": _safe_float(t.get("nav")),
+                "balance": _safe_float(t.get("balance")),
+                "type": t.get("type"),
+            }
+        )
+    return txns
+
+
 def _build_funds(data: dict) -> list:
     funds = []
     for folio in data.get("folios") or []:
@@ -42,6 +75,7 @@ def _build_funds(data: dict) -> list:
                     "investedValue": float(valuation.get("cost") or 0),
                     "currentValue": float(valuation.get("value") or 0),
                     "currentNav": float(valuation.get("nav") or 0),
+                    "transactions": _build_transactions(scheme),
                 }
             )
     return funds

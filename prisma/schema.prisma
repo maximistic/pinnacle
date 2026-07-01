@@ -13,18 +13,32 @@ datasource db {
 }
 
 model Holding {
-  id             String   @id @default(cuid())
-  type           String   // STOCK | MUTUAL_FUND | FD | GOLD | REAL_ESTATE | OTHER
+  id             String        @id @default(cuid())
+  type           String        // STOCK | MUTUAL_FUND | FD | GOLD | REAL_ESTATE | OTHER
   name           String
-  quantity       Float?   // units/shares, null for FD/real estate
+  quantity       Float?        // units/shares, null for FD/real estate
   investedValue  Float
   currentValue   Float
   notes          String?
-  isin           String?  // Securities identifier (ISIN), optional
-  folioNumber    String?  // Mutual fund folio number, only relevant for MUTUAL_FUND
-  source         String   @default("MANUAL") // MANUAL | CAS_UPLOAD
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isin           String?       // Securities identifier (ISIN), optional
+  folioNumber    String?       // Mutual fund folio number, only relevant for MUTUAL_FUND
+  source         String        @default("MANUAL") // MANUAL | CAS_UPLOAD
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  transactions   Transaction[]
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  holdingId   String
+  holding     Holding  @relation(fields: [holdingId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String
+  amount      Float?
+  units       Float?
+  nav         Float?
+  balance     Float?
+  type        String?
 }
 
 model Snapshot {

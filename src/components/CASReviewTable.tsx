@@ -9,6 +9,16 @@ type ExistingHolding = {
   isin: string | null;
 };
 
+export type ParsedTransaction = {
+  date: string;
+  description: string;
+  amount: number | null;
+  units: number | null;
+  nav: number | null;
+  balance: number | null;
+  type: string | null;
+};
+
 export type ParsedFund = {
   schemeName: string;
   isin: string | null;
@@ -17,6 +27,7 @@ export type ParsedFund = {
   investedValue: number;
   currentValue: number;
   currentNav: number;
+  transactions?: ParsedTransaction[];
 };
 
 type RowState = {
@@ -29,6 +40,7 @@ type RowState = {
   currentNav: string;
   isin: string | null;
   match: ExistingHolding | null;
+  transactions?: ParsedTransaction[];
 };
 
 type Props = {
@@ -69,6 +81,7 @@ function buildRows(
     currentNav: String(f.currentNav),
     isin: f.isin,
     match: findMatch(f, holdings),
+    transactions: f.transactions,
   }));
 }
 
@@ -124,6 +137,7 @@ export default function CASReviewTable({ funds, onSave }: Props) {
           investedValue: parseFloat(r.investedValue) || 0,
           currentValue: parseFloat(r.currentValue) || 0,
           currentNav: parseFloat(r.currentNav) || 0,
+          transactions: r.transactions,
         })
       );
     onSave(approved);
@@ -197,7 +211,7 @@ export default function CASReviewTable({ funds, onSave }: Props) {
                 </td>
 
                 {/* Scheme Name */}
-                <td className="px-1.5 py-1 min-w-[240px]">
+                <td className="px-1.5 py-1 min-w-60">
                   <input
                     type="text"
                     value={row.schemeName}
@@ -207,7 +221,7 @@ export default function CASReviewTable({ funds, onSave }: Props) {
                 </td>
 
                 {/* Folio No */}
-                <td className="px-1.5 py-1 min-w-[110px]">
+                <td className="px-1.5 py-1 min-w-27.5">
                   <input
                     type="text"
                     value={row.folioNumber}
@@ -269,7 +283,7 @@ export default function CASReviewTable({ funds, onSave }: Props) {
                 </td>
 
                 {/* Status badge */}
-                <td className="px-3 py-1.5 min-w-[180px]">
+                <td className="px-3 py-1.5 min-w-45">
                   {row.match ? (
                     <span className="inline-flex flex-col gap-0.5">
                       <span className="text-[9px] uppercase tracking-widest text-amber/70">

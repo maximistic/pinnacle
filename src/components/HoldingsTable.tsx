@@ -132,6 +132,7 @@ type Props = {
   extraCols?: ExtraCols;
   showIsin?: boolean;
   showFolioNumber?: boolean;
+  onRowClick?: (holding: Holding) => void;
 };
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ export default function HoldingsTable({
   extraCols,
   showIsin       = false,
   showFolioNumber = false,
+  onRowClick,
 }: Props) {
   const showTypeColumn = !!typeOptions;
   const hasExtraCols   = !!extraCols && showQuantity;
@@ -919,7 +921,12 @@ export default function HoldingsTable({
                     </td>
 
                     {showTypeColumn && <td className="px-4 py-2.5 text-xs text-muted">{typeLabel}</td>}
-                    <td className="px-4 py-2.5 text-sm text-foreground">{h.name}</td>
+                    <td
+                      className={`px-4 py-2.5 text-sm text-foreground ${onRowClick ? "cursor-pointer hover:text-amber transition-colors" : ""}`}
+                      onClick={onRowClick ? () => onRowClick(h) : undefined}
+                    >
+                      {h.name}
+                    </td>
 
                     {/* Notes cell */}
                     <td className="px-4 py-2 w-40 max-w-40">

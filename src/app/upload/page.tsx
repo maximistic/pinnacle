@@ -123,6 +123,7 @@ export default function UploadPage() {
             investedValue: row.investedValue,
             currentValue: row.currentValue,
             source: "CAS_UPLOAD",
+            transactions: row.transactions ?? [],
           }),
         });
 

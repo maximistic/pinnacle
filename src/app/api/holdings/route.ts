@@ -14,9 +14,50 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(holdings);
 }
 
+type IncomingTransaction = {
+  date: string;
+  description: string;
+  amount?: number | null;
+  units?: number | null;
+  nav?: number | null;
+  balance?: number | null;
+  type?: string | null;
+};
+
+async function saveTransactions(holdingId: string, transactions: IncomingTransaction[]) {
+  if (!Array.isArray(transactions) || transactions.length === 0) return;
+
+  // Fetch existing (date+description) pairs to skip duplicates
+  const existing = await prisma.transaction.findMany({
+    where: { holdingId },
+    select: { date: true, description: true },
+  });
+  const seen = new Set(
+    existing.map((t) => `${t.date.toISOString().slice(0, 10)}|${t.description}`)
+  );
+
+  const toCreate = transactions
+    .filter((t) => t.date && t.description)
+    .filter((t) => !seen.has(`${t.date}|${t.description}`))
+    .map((t) => ({
+      holdingId,
+      date: new Date(t.date),
+      description: t.description,
+      amount: t.amount ?? null,
+      units: t.units ?? null,
+      nav: t.nav ?? null,
+      balance: t.balance ?? null,
+      type: t.type ?? null,
+    }));
+
+  if (toCreate.length > 0) {
+    await prisma.transaction.createMany({ data: toCreate });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source } = body;
+  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source, transactions } = body;
 
   // --- Validation ---
   if (!isValidType(type)) {
@@ -96,6 +137,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await saveTransactions(merged.id, transactions);
     return NextResponse.json({ ...merged, merged: true }, { status: 200 });
   }
 
@@ -114,5 +156,6 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  await saveTransactions(holding.id, transactions);
   return NextResponse.json(holding, { status: 201 });
 }
