@@ -3,5 +3,11 @@
     "api/parse-cas.py": {
       "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/process-recurring",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

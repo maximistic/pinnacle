@@ -13,19 +13,43 @@ datasource db {
 }
 
 model Holding {
-  id             String        @id @default(cuid())
-  type           String        // STOCK | MUTUAL_FUND | FD | GOLD | REAL_ESTATE | OTHER
-  name           String
-  quantity       Float?        // units/shares, null for FD/real estate
-  investedValue  Float
-  currentValue   Float
-  notes          String?
-  isin           String?       // Securities identifier (ISIN), optional
-  folioNumber    String?       // Mutual fund folio number, only relevant for MUTUAL_FUND
-  source         String        @default("MANUAL") // MANUAL | CAS_UPLOAD
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  transactions   Transaction[]
+  id              String          @id @default(cuid())
+  type            String          // STOCK | MUTUAL_FUND | FD | GOLD | REAL_ESTATE | OTHER
+  name            String
+  quantity        Float?          // units/shares, null for FD/real estate
+  investedValue   Float
+  currentValue    Float
+  notes           String?
+  isin            String?         // Securities identifier (ISIN), optional
+  folioNumber     String?         // Mutual fund folio number, only relevant for MUTUAL_FUND
+  source          String          @default("MANUAL") // MANUAL | CAS_UPLOAD
+  currency        String          @default("INR")
+  exchangeRate    Float?          // only for non-INR holdings, e.g. USD stocks
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  transactions    Transaction[]
+  recurringRules  RecurringRule[]
+}
+
+model RecurringRule {
+  id            String    @id @default(cuid())
+  holdingId     String?
+  holding       Holding?  @relation(fields: [holdingId], references: [id], onDelete: SetNull)
+  name          String
+  ruleType      String    // SIP | RD | EPFO | CUSTOM
+  amount        Float
+  frequency     String    @default("MONTHLY") // MONTHLY | WEEKLY | QUARTERLY
+  dayOfMonth    Int       @default(1)
+  startDate     DateTime
+  endDate       DateTime?
+  interestRate  Float?    // for RD: annual interest rate
+  tenureMonths  Int?      // for RD: total duration
+  employerMatch Float?    // for EPFO: employer contribution
+  lastRunDate   DateTime?
+  status        String    @default("ACTIVE") // ACTIVE | PAUSED
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Transaction {
