@@ -11,6 +11,8 @@ const config: Config = {
     "^.+\\.tsx?$": ["ts-jest", { tsconfig: { module: "commonjs" } }],
   },
   moduleDirectories: ["node_modules", "<rootDir>"],
+  watchPathIgnorePatterns: ["<rootDir>/.claude/"],
+  modulePathIgnorePatterns: ["<rootDir>/.claude/"],
 };
 
 export default config;
