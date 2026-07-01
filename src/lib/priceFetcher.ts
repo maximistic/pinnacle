@@ -24,7 +24,26 @@ export async function fetchMFNav(amfiCode: string): Promise<number | null> {
   }
 }
 
-/** Search for AMFI scheme code by fund name. Returns first match's schemeCode or null. */
+function scoreScheme(candidate: string, query: string): number {
+  const c = candidate.toLowerCase();
+  const q = query.toLowerCase();
+  if (c === q) return 100;
+
+  let score = 0;
+  if (q.includes("direct")  && c.includes("direct"))  score += 20;
+  if (q.includes("growth")  && c.includes("growth"))  score += 15;
+  if (q.includes("regular") && c.includes("regular")) score += 10;
+
+  const qWords = q.split(/\s+/).filter(Boolean);
+  const cWords = c.split(/\s+/).filter(Boolean);
+  const matching = qWords.filter((w) => cWords.includes(w)).length;
+  const total = new Set([...qWords, ...cWords]).size;
+  if (total > 0) score += (matching / total) * 50;
+
+  return score;
+}
+
+/** Search for AMFI scheme code by fund name using score-based matching. */
 export async function searchAmfiCode(name: string): Promise<string | null> {
   try {
     const res = await fetch(
@@ -32,9 +51,23 @@ export async function searchAmfiCode(name: string): Promise<string | null> {
       { signal: AbortSignal.timeout(10_000) }
     );
     if (!res.ok) return null;
-    const json = await res.json();
-    const code = json?.[0]?.schemeCode;
-    return code != null ? String(code) : null;
+    const json = await res.json() as Array<{ schemeCode: number | string; schemeName: string }>;
+    if (!Array.isArray(json) || json.length === 0) return null;
+
+    const scored = json
+      .map((item) => ({ code: String(item.schemeCode), name: item.schemeName ?? "", score: scoreScheme(item.schemeName ?? "", name) }))
+      .sort((a, b) => b.score - a.score);
+
+    const best = scored[0];
+    if (best.score < 40) {
+      console.error(
+        `[priceFetcher] No confident AMFI match for "${name}". Top candidates:`,
+        scored.slice(0, 3).map((s) => `${s.name} (score ${Math.round(s.score)})`)
+      );
+      return null;
+    }
+
+    return best.code;
   } catch {
     return null;
   }

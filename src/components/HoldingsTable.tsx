@@ -1028,7 +1028,19 @@ export default function HoldingsTable({
                       {fmt(h.investedValue)}
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground tabular-nums">
-                      {fmt(h.currentValue)}
+                      <span className="inline-flex items-center gap-1 justify-end">
+                        {fmt(h.currentValue)}
+                        {h.type === "MUTUAL_FUND" && !h.amfi && !h.lastPriceFetchedAt && (
+                          <span
+                            className="relative group/amfi shrink-0 cursor-default text-amber leading-none"
+                          >
+                            ⚠
+                            <span className="pointer-events-none absolute right-0 top-full mt-1 z-20 hidden group-hover/amfi:block whitespace-nowrap px-2 py-1 text-[9px] font-mono bg-surface border border-edge text-muted shadow-sm">
+                              AMFI code not set — prices won&apos;t auto-update. Click edit to add it.
+                            </span>
+                          </span>
+                        )}
+                      </span>
                       {secondaryValues?.[h.id] && (
                         <div className="text-[9px] text-muted/50 font-mono mt-0.5 leading-none">{secondaryValues[h.id]}</div>
                       )}
@@ -1223,7 +1235,7 @@ export default function HoldingsTable({
                     placeholder="e.g. 122639"
                     maxLength={12}
                   />
-                  <p className="text-[10px] text-muted mt-1">Find yours at mfapi.in — required for automatic NAV updates</p>
+                  <p className="text-[10px] text-muted mt-1">Can&apos;t find your AMFI code? Search at mfapi.in/mf/search?q=your+fund+name and enter the schemeCode of the exact matching variant (Direct/Regular, Growth/IDCW)</p>
                 </Field>
               )}
 
