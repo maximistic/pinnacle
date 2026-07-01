@@ -24,6 +24,49 @@ function saveSort(key: string, s: SortState) {
   try { localStorage.setItem(key, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
+// ── CSV utilities ─────────────────────────────────────────────────────────────
+
+function csvEscape(val: string): string {
+  if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQ = false; }
+      else { cur += ch; }
+    } else if (ch === '"') {
+      inQ = true;
+    } else if (ch === ",") {
+      fields.push(cur); cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  fields.push(cur);
+  return fields;
+}
+
+function downloadCSV(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type Holding = {
@@ -52,6 +95,7 @@ type FormState = {
   currentValue: string;
   isin: string;
   folioNumber: string;
+  notes: string;
 };
 
 type FormErrors = Partial<
@@ -59,8 +103,22 @@ type FormErrors = Partial<
 >;
 
 type ExtraCols = { avgLabel: string; currentLabel: string };
-
 type BulkModal = "confirm" | "deleting" | "result" | null;
+
+type ImportRow = {
+  idx: number;
+  type: string;
+  name: string;
+  isin: string;
+  folioNumber: string;
+  quantity: string;
+  investedValue: string;
+  currentValue: string;
+  notes: string;
+  include: boolean;
+};
+
+type ImportModal = "preview" | "importing" | "done" | null;
 
 type Props = {
   title: string;
@@ -184,42 +242,48 @@ export default function HoldingsTable({
   const hasExtraCols   = !!extraCols && showQuantity;
   const defaultType    = typeOptions?.[0]?.value ?? fixedType ?? "";
   const sortKey        = `pinnacle-sort-${title}`;
-
-  const filterKey = filterTypes?.join(",");
+  const filterKey      = filterTypes?.join(",");
 
   // ── State ─────────────────────────────────────────────────────────────────
 
   function makeEmptyForm(): FormState {
-    return { type: defaultType, name: "", quantity: "", investedValue: "", currentValue: "", isin: "", folioNumber: "" };
+    return { type: defaultType, name: "", quantity: "", investedValue: "", currentValue: "", isin: "", folioNumber: "", notes: "" };
   }
 
-  const [holdings,    setHoldings]    = useState<Holding[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [loadError,   setLoadError]   = useState<string | null>(null);
-  const [modalMode,   setModalMode]   = useState<null | "add" | string>(null);
-  const [form,        setForm]        = useState<FormState>(makeEmptyForm);
-  const [formErrors,  setFormErrors]  = useState<FormErrors>({});
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitting,  setSubmitting]  = useState(false);
+  const [holdings,     setHoldings]     = useState<Holding[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState<string | null>(null);
+  const [modalMode,    setModalMode]    = useState<null | "add" | string>(null);
+  const [form,         setForm]         = useState<FormState>(makeEmptyForm);
+  const [formErrors,   setFormErrors]   = useState<FormErrors>({});
+  const [submitError,  setSubmitError]  = useState<string | null>(null);
+  const [submitting,   setSubmitting]   = useState(false);
   const [mergeMessage, setMergeMessage] = useState<string | null>(null);
 
-  // Search & sort
   const [search, setSearch] = useState("");
   const [sort,   setSort]   = useState<SortState>(() => loadSort(sortKey));
 
-  // Selection & bulk delete
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
   const [bulkModal,    setBulkModal]    = useState<BulkModal>(null);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const [bulkFailed,   setBulkFailed]   = useState<string[]>([]);
 
-  // Individual delete
   const [deletingId,   setDeletingId]   = useState<string | null>(null);
   const [deleteError,  setDeleteError]  = useState<{ holding: Holding; msg: string } | null>(null);
 
+  // Notes inline edit
+  const [editingNotes, setEditingNotes] = useState<{ id: string; value: string } | null>(null);
+
+  // CSV import
+  const [importRows,     setImportRows]     = useState<ImportRow[]>([]);
+  const [importModal,    setImportModal]    = useState<ImportModal>(null);
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0, current: "" });
+  const [importSummary,  setImportSummary]  = useState<{ saved: number; merged: number; failed: { name: string; error: string }[] } | null>(null);
+
   // ── Refs ──────────────────────────────────────────────────────────────────
 
-  const selectAllRef = useRef<HTMLInputElement>(null);
+  const selectAllRef  = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // ── Derived / memoised ────────────────────────────────────────────────────
 
@@ -233,7 +297,6 @@ export default function HoldingsTable({
       const m = sort.dir === "asc" ? 1 : -1;
       if (sort.field === "name")         return a.name.localeCompare(b.name) * m;
       if (sort.field === "currentValue") return (a.currentValue - b.currentValue) * m;
-      // gainPct
       const ag = a.investedValue ? (a.currentValue - a.investedValue) / a.investedValue : 0;
       const bg = b.investedValue ? (b.currentValue - b.investedValue) / b.investedValue : 0;
       return (ag - bg) * m;
@@ -243,9 +306,10 @@ export default function HoldingsTable({
   }, [holdings, search, sort]);
 
   const colCount =
-    1 +                        // checkbox
+    1 +
     (showTypeColumn ? 1 : 0) +
     1 +                        // Name
+    1 +                        // Notes
     (showQuantity ? 1 : 0) +
     (hasExtraCols ? 2 : 0) +
     3 +                        // Invested + Current + Gain/Loss
@@ -264,9 +328,7 @@ export default function HoldingsTable({
   // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = someDisplayedSelected;
-    }
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someDisplayedSelected;
   }, [someDisplayedSelected]);
 
   useEffect(() => {
@@ -341,6 +403,7 @@ export default function HoldingsTable({
       currentValue: String(h.currentValue),
       isin: h.isin ?? "",
       folioNumber: h.folioNumber ?? "",
+      notes: h.notes ?? "",
     });
     setFormErrors({});
     setSubmitError(null);
@@ -374,6 +437,7 @@ export default function HoldingsTable({
         quantity: showQuantity && form.quantity !== "" ? parseFloat(form.quantity) : null,
         investedValue: parseFloat(form.investedValue),
         currentValue: parseFloat(form.currentValue),
+        notes: form.notes.trim() || null,
         isin:         showIsin         ? (form.isin.trim() || null)         : undefined,
         folioNumber:  showFolioNumber  ? (form.folioNumber.trim() || null)  : undefined,
       };
@@ -453,7 +517,221 @@ export default function HoldingsTable({
     setBulkFailed([]);
   }
 
+  // ── Notes inline edit ─────────────────────────────────────────────────────
+
+  async function handleNotesSave(id: string, newValue: string, original: string | null) {
+    setEditingNotes(null);
+    const trimmed = newValue.trim();
+    if (trimmed === (original ?? "")) return;
+    try {
+      const res = await fetch(`/api/holdings/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: trimmed || null }),
+      });
+      if (!res.ok) throw new Error();
+      const updated: Holding = await res.json();
+      setHoldings((prev) => prev.map((h) => h.id === id ? { ...h, notes: updated.notes } : h));
+    } catch { /* ignore */ }
+  }
+
+  // ── CSV export ────────────────────────────────────────────────────────────
+
+  function handleExport() {
+    const today = new Date().toISOString().slice(0, 10);
+    const slug  = title.toLowerCase().replace(/\s+/g, "-");
+
+    const headers: string[] = [];
+    if (showTypeColumn) headers.push("Type");
+    headers.push("Name");
+    if (showIsin) headers.push("ISIN");
+    if (showFolioNumber) headers.push("Folio Number");
+    if (showQuantity) headers.push(quantityLabel ?? "Qty/Units");
+    if (hasExtraCols) { headers.push(extraCols!.avgLabel); headers.push(extraCols!.currentLabel); }
+    headers.push("Invested Value (Rs)", "Current Value (Rs)", "Gain/Loss (Rs)", "Gain/Loss %", "Notes", "Last Updated");
+
+    const csvRows = displayed.map((h) => {
+      const gain    = h.currentValue - h.investedValue;
+      const gainPct = h.investedValue > 0 ? ((gain / h.investedValue) * 100).toFixed(2) : "0.00";
+      const typeLabel = typeOptions?.find((o) => o.value === h.type)?.label ?? h.type;
+
+      const cols: (string | number)[] = [];
+      if (showTypeColumn) cols.push(csvEscape(typeLabel));
+      cols.push(csvEscape(h.name));
+      if (showIsin) cols.push(csvEscape(h.isin ?? ""));
+      if (showFolioNumber) cols.push(csvEscape(h.folioNumber ?? ""));
+      if (showQuantity) cols.push(h.quantity ?? "");
+      if (hasExtraCols) {
+        cols.push(h.quantity ? (h.investedValue / h.quantity).toFixed(4) : "");
+        cols.push(h.quantity ? (h.currentValue / h.quantity).toFixed(4) : "");
+      }
+      cols.push(
+        h.investedValue.toFixed(2),
+        h.currentValue.toFixed(2),
+        gain.toFixed(2),
+        gainPct,
+        csvEscape(h.notes ?? ""),
+        new Date(h.updatedAt).toLocaleDateString("en-IN"),
+      );
+      return cols.join(",");
+    });
+
+    downloadCSV([headers.join(","), ...csvRows].join("\n"), `pinnacle-${slug}-${today}.csv`);
+  }
+
+  // ── CSV import ────────────────────────────────────────────────────────────
+
+  function handleImportFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text  = (e.target?.result as string) ?? "";
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) return;
+
+      const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
+      const col     = (name: string) => headers.findIndex((h) => h === name);
+      const colHas  = (sub: string) => headers.findIndex((h) => h.includes(sub));
+
+      const nameIdx     = col("name");
+      const typeColIdx  = col("type");
+      const isinIdx     = col("isin");
+      const folioIdx    = col("folio number");
+      const qtyIdx      = headers.findIndex((h) => h.includes("qty") || h.includes("units") || h === "quantity");
+      const investedIdx = colHas("invested");
+      const currentIdx  = headers.findIndex((h) => h.includes("current value"));
+      const notesIdx    = col("notes");
+
+      const rows: ImportRow[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        if (cols.every((c) => !c.trim())) continue;
+
+        const get = (idx: number) => (idx >= 0 ? (cols[idx] ?? "").trim() : "");
+
+        const rawType     = get(typeColIdx);
+        const name        = get(nameIdx);
+        const isin        = get(isinIdx);
+        const folioNumber = get(folioIdx);
+        const quantity    = get(qtyIdx);
+        const investedValue = get(investedIdx);
+        const currentValue  = get(currentIdx);
+        const notes       = get(notesIdx);
+
+        const resolvedType =
+          fixedType ??
+          typeOptions?.find((o) => o.value === rawType || o.label.toLowerCase() === rawType.toLowerCase())?.value ??
+          typeOptions?.[0]?.value ??
+          rawType;
+
+        rows.push({
+          idx: i - 1,
+          type: resolvedType,
+          name,
+          isin,
+          folioNumber,
+          quantity,
+          investedValue,
+          currentValue,
+          notes,
+          include: true,
+        });
+      }
+
+      setImportRows(rows);
+      setImportSummary(null);
+      setImportModal("preview");
+      if (importFileRef.current) importFileRef.current.value = "";
+    };
+    reader.readAsText(file);
+  }
+
+  function computeImportStatus(row: ImportRow): "new" | "merge" {
+    if (row.isin && holdings.some((h) => h.isin === row.isin)) return "merge";
+    if (row.name && holdings.some((h) => h.name.toLowerCase() === row.name.toLowerCase())) return "merge";
+    return "new";
+  }
+
+  function updateImportRow(idx: number, patch: Partial<ImportRow>) {
+    setImportRows((prev) => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  }
+
+  async function handleImportConfirm() {
+    const toImport = importRows.filter((r) => r.include);
+    if (!toImport.length) return;
+
+    setImportModal("importing");
+    setImportProgress({ done: 0, total: toImport.length, current: toImport[0]?.name ?? "" });
+
+    let saved = 0;
+    let merged = 0;
+    const failed: { name: string; error: string }[] = [];
+
+    for (let i = 0; i < toImport.length; i++) {
+      const row = toImport[i];
+      setImportProgress({ done: i + 1, total: toImport.length, current: row.name });
+
+      const qty      = parseFloat(row.quantity);
+      const invested = parseFloat(row.investedValue);
+      const current  = parseFloat(row.currentValue);
+
+      if (!row.name.trim() || isNaN(invested) || isNaN(current)) {
+        failed.push({ name: row.name || `Row ${row.idx + 1}`, error: "Missing required fields" });
+        continue;
+      }
+
+      const rowType =
+        fixedType ??
+        typeOptions?.find((o) => o.value === row.type || o.label.toLowerCase() === row.type.toLowerCase())?.value ??
+        typeOptions?.[0]?.value ??
+        row.type;
+
+      const body: Record<string, unknown> = {
+        type: rowType,
+        name: row.name.trim(),
+        investedValue: invested,
+        currentValue: current,
+      };
+      if (showQuantity && row.quantity !== "" && !isNaN(qty) && qty > 0) body.quantity = qty;
+      if (showIsin && row.isin) body.isin = row.isin;
+      if (showFolioNumber && row.folioNumber) body.folioNumber = row.folioNumber;
+      if (row.notes) body.notes = row.notes;
+
+      try {
+        const res  = await fetch("/api/holdings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({})) as { error?: string; merged?: boolean };
+        if (!res.ok) {
+          failed.push({ name: row.name, error: data.error ?? `HTTP ${res.status}` });
+        } else if (data.merged) {
+          merged++;
+        } else {
+          saved++;
+        }
+      } catch {
+        failed.push({ name: row.name, error: "Network error" });
+      }
+    }
+
+    setImportSummary({ saved, merged, failed });
+    setImportModal("done");
+    await fetchHoldings();
+  }
+
+  function closeImportModal() {
+    setImportModal(null);
+    setImportRows([]);
+    setImportSummary(null);
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
+
+  const importSelectedCount = importRows.filter((r) => r.include).length;
+  const importPct = importProgress.total
+    ? Math.round((importProgress.done / importProgress.total) * 100)
+    : 0;
 
   return (
     <main className="p-6 text-foreground">
@@ -461,22 +739,42 @@ export default function HoldingsTable({
       {/* ── Page header ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-5 pb-4 border-b border-edge">
         <h1 className="text-xs font-semibold uppercase tracking-[0.15em] text-muted">{title}</h1>
-        <button
-          onClick={openAdd}
-          className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-semibold border border-amber text-amber hover:bg-amber/10 transition-colors"
-        >
-          + {addLabel}
-        </button>
+        <div className="flex items-center gap-2">
+          {holdings.length > 0 && (
+            <button
+              onClick={handleExport}
+              className="px-3 py-1.5 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+            >
+              Export CSV
+            </button>
+          )}
+          <button
+            onClick={() => importFileRef.current?.click()}
+            className="px-3 py-1.5 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            Import CSV
+          </button>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".csv"
+            className="sr-only"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImportFile(f); }}
+          />
+          <button
+            onClick={openAdd}
+            className="px-3 py-1.5 text-[10px] uppercase tracking-widest font-semibold border border-amber text-amber hover:bg-amber/10 transition-colors"
+          >
+            + {addLabel}
+          </button>
+        </div>
       </div>
 
       {/* Load error */}
       {loadError && (
         <div className="mb-4 px-3 py-2 text-xs border border-loss/40 text-loss bg-loss/5 flex items-center justify-between">
           <span>{loadError}</span>
-          <button
-            onClick={fetchHoldings}
-            className="ml-3 shrink-0 text-[10px] uppercase tracking-wider text-loss hover:opacity-70 transition-opacity"
-          >
+          <button onClick={fetchHoldings} className="ml-3 shrink-0 text-[10px] uppercase tracking-wider text-loss hover:opacity-70 transition-opacity">
             Retry
           </button>
         </div>
@@ -520,7 +818,7 @@ export default function HoldingsTable({
         )}
       </div>
 
-      {/* Delete error banner (individual delete) */}
+      {/* Delete error banner */}
       {deleteError && (
         <div className="mb-3 px-3 py-2 text-xs border border-loss/40 text-loss bg-loss/5 flex items-center justify-between">
           <span>Could not delete &ldquo;{deleteError.holding.name}&rdquo;.</span>
@@ -541,7 +839,6 @@ export default function HoldingsTable({
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-surface text-muted uppercase text-[10px] tracking-widest border-b border-edge">
-              {/* Select-all checkbox */}
               <th className="px-3 py-2.5 w-9">
                 <input
                   ref={selectAllRef}
@@ -553,11 +850,8 @@ export default function HoldingsTable({
                 />
               </th>
 
-              {showTypeColumn && (
-                <th className="px-4 py-2.5 text-left font-medium">Type</th>
-              )}
+              {showTypeColumn && <th className="px-4 py-2.5 text-left font-medium">Type</th>}
 
-              {/* Sortable: Name */}
               <th
                 className="px-4 py-2.5 text-left font-medium cursor-pointer hover:text-foreground select-none transition-colors"
                 onClick={() => toggleSort("name")}
@@ -565,9 +859,9 @@ export default function HoldingsTable({
                 Name <SortIcon active={sort.field === "name"} dir={sort.dir} />
               </th>
 
-              {showQuantity && (
-                <th className="px-4 py-2.5 text-right font-medium">{quantityLabel}</th>
-              )}
+              <th className="px-4 py-2.5 text-left font-medium w-40">Notes</th>
+
+              {showQuantity && <th className="px-4 py-2.5 text-right font-medium">{quantityLabel}</th>}
               {hasExtraCols && (
                 <>
                   <th className="px-4 py-2.5 text-right font-medium">{extraCols!.avgLabel}</th>
@@ -577,7 +871,6 @@ export default function HoldingsTable({
 
               <th className="px-4 py-2.5 text-right font-medium">Invested (₹)</th>
 
-              {/* Sortable: Current Value */}
               <th
                 className="px-4 py-2.5 text-right font-medium cursor-pointer hover:text-foreground select-none transition-colors"
                 onClick={() => toggleSort("currentValue")}
@@ -585,7 +878,6 @@ export default function HoldingsTable({
                 Current (₹) <SortIcon active={sort.field === "currentValue"} dir={sort.dir} />
               </th>
 
-              {/* Sortable: Gain/Loss % */}
               <th
                 className="px-4 py-2.5 text-right font-medium cursor-pointer hover:text-foreground select-none transition-colors"
                 onClick={() => toggleSort("gainPct")}
@@ -599,47 +891,65 @@ export default function HoldingsTable({
           </thead>
 
           <tbody>
-            {/* Skeleton on initial load */}
             {loading && holdings.length === 0 ? (
               <SkeletonRows cols={colCount} count={5} />
 
             ) : displayed.length === 0 ? (
               <tr>
                 <td colSpan={colCount} className="px-4 py-8 text-center text-xs text-muted">
-                  {search
-                    ? `No results for "${search}"`
-                    : "No entries yet. Add one above."}
+                  {search ? `No results for "${search}"` : "No entries yet. Add one above."}
                 </td>
               </tr>
 
             ) : (
               displayed.map((h) => {
-                const gain      = h.currentValue - h.investedValue;
-                const typeLabel = typeOptions?.find((o) => o.value === h.type)?.label ?? h.type;
+                const gain       = h.currentValue - h.investedValue;
+                const typeLabel  = typeOptions?.find((o) => o.value === h.type)?.label ?? h.type;
                 const isSelected = selectedIds.has(h.id);
                 const isDeleting = deletingId === h.id;
+                const isEditingThisNote = editingNotes?.id === h.id;
 
                 return (
                   <tr
                     key={h.id}
-                    className={`border-b border-edge transition-colors ${
-                      isSelected ? "bg-amber/3" : "hover:bg-white/1.5"
-                    }`}
+                    className={`border-b border-edge transition-colors ${isSelected ? "bg-amber/3" : "hover:bg-white/1.5"}`}
                   >
-                    {/* Row checkbox */}
                     <td className="px-3 py-2.5 text-center w-9">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleRow(h.id)}
-                        className="accent-amber"
-                      />
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleRow(h.id)} className="accent-amber" />
                     </td>
 
-                    {showTypeColumn && (
-                      <td className="px-4 py-2.5 text-xs text-muted">{typeLabel}</td>
-                    )}
+                    {showTypeColumn && <td className="px-4 py-2.5 text-xs text-muted">{typeLabel}</td>}
                     <td className="px-4 py-2.5 text-sm text-foreground">{h.name}</td>
+
+                    {/* Notes cell */}
+                    <td className="px-4 py-2 w-40 max-w-40">
+                      {isEditingThisNote ? (
+                        <input
+                          type="text"
+                          autoFocus
+                          value={editingNotes.value}
+                          onChange={(e) => setEditingNotes({ id: h.id, value: e.target.value })}
+                          onBlur={() => handleNotesSave(h.id, editingNotes.value, h.notes)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleNotesSave(h.id, editingNotes.value, h.notes);
+                            if (e.key === "Escape") setEditingNotes(null);
+                          }}
+                          className="w-full px-1.5 py-0.5 text-xs font-sans border border-amber/50 bg-background text-foreground focus:outline-none"
+                        />
+                      ) : (
+                        <span
+                          className="block truncate text-xs cursor-default"
+                          title={h.notes ?? "Double-click to add a note"}
+                          onDoubleClick={() => setEditingNotes({ id: h.id, value: h.notes ?? "" })}
+                        >
+                          {h.notes ? (
+                            <span className="text-muted">{h.notes}</span>
+                          ) : (
+                            <span className="text-muted/20 select-none">—</span>
+                          )}
+                        </span>
+                      )}
+                    </td>
 
                     {showQuantity && (
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted tabular-nums">
@@ -666,16 +976,11 @@ export default function HoldingsTable({
                     <td className={`px-4 py-2.5 text-right font-mono text-xs tabular-nums font-medium ${gain >= 0 ? "text-gain" : "text-loss"}`}>
                       {gain >= 0 ? "+" : ""}{fmt(gain)}
                     </td>
-
                     <td className="px-4 py-2.5 text-right font-mono text-[10px] text-muted tabular-nums whitespace-nowrap">
                       {relativeTime(h.updatedAt)}
                     </td>
-
                     <td className="px-4 py-2.5 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => openEdit(h)}
-                        className="mr-3 text-[10px] uppercase tracking-wider text-amber hover:opacity-70 transition-opacity"
-                      >
+                      <button onClick={() => openEdit(h)} className="mr-3 text-[10px] uppercase tracking-wider text-amber hover:opacity-70 transition-opacity">
                         Edit
                       </button>
                       <button
@@ -700,6 +1005,7 @@ export default function HoldingsTable({
                 <td className="px-4 py-2.5 text-[10px] uppercase tracking-widest text-muted font-semibold">
                   {search ? `${displayed.length} result${displayed.length !== 1 ? "s" : ""}` : "Total"}
                 </td>
+                <td className="px-4 py-2.5" /> {/* Notes */}
                 {showQuantity && <td className="px-4 py-2.5" />}
                 {hasExtraCols && <><td className="px-4 py-2.5" /><td className="px-4 py-2.5" /></>}
                 <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground tabular-nums font-medium">
@@ -823,6 +1129,16 @@ export default function HoldingsTable({
                 </Field>
               )}
 
+              <Field label="Notes">
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  className={`${inputCls} resize-none`}
+                  placeholder="Optional notes…"
+                />
+              </Field>
+
               <div className="flex gap-2 pt-1">
                 <button
                   type="submit"
@@ -852,7 +1168,6 @@ export default function HoldingsTable({
         >
           <div className="w-full max-w-sm border border-edge bg-surface p-6">
 
-            {/* Confirm */}
             {bulkModal === "confirm" && (
               <>
                 <h2 className="text-[10px] uppercase tracking-widest text-muted mb-4">
@@ -884,7 +1199,6 @@ export default function HoldingsTable({
               </>
             )}
 
-            {/* Deleting progress */}
             {bulkModal === "deleting" && (
               <div className="py-4 space-y-4">
                 <p className="text-sm text-foreground">
@@ -902,16 +1216,13 @@ export default function HoldingsTable({
               </div>
             )}
 
-            {/* Result */}
             {bulkModal === "result" && (
               <>
                 <h2 className="text-[10px] uppercase tracking-widest text-muted mb-4">Done</h2>
-
                 <div className="mb-4 px-3 py-2.5 border border-gain/30 bg-gain/5 text-xs text-foreground">
                   <span className="text-gain font-mono mr-2">✓</span>
                   {bulkProgress.total - bulkFailed.length} of {bulkProgress.total} deleted
                 </div>
-
                 {bulkFailed.length > 0 && (
                   <div className="mb-4 border border-loss/30 bg-loss/5">
                     <p className="px-3 py-1.5 text-[10px] uppercase tracking-widest text-loss border-b border-loss/20">
@@ -924,7 +1235,6 @@ export default function HoldingsTable({
                     </ul>
                   </div>
                 )}
-
                 <button
                   onClick={closeBulkModal}
                   className="w-full py-2 text-[10px] uppercase tracking-widest font-semibold bg-amber text-background hover:opacity-90 transition-opacity"
@@ -932,6 +1242,260 @@ export default function HoldingsTable({
                   Close
                 </button>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── CSV import modal ──────────────────────────────────────────────── */}
+      {importModal !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget && importModal === "preview") closeImportModal(); }}
+        >
+          <div className="w-full max-w-5xl border border-edge bg-surface max-h-[90vh] flex flex-col">
+
+            {/* Header */}
+            <div className="px-5 py-3.5 border-b border-edge flex items-center justify-between shrink-0">
+              <div>
+                <h2 className="text-[10px] uppercase tracking-widest text-muted font-semibold">
+                  {importModal === "preview" && `Import Preview — ${importSelectedCount} of ${importRows.length} selected`}
+                  {importModal === "importing" && "Importing…"}
+                  {importModal === "done" && "Import Complete"}
+                </h2>
+                {importModal === "preview" && (
+                  <p className="text-[10px] text-muted/50 mt-0.5">
+                    Edit cells directly. Double-check status badges. Deselect rows to skip.
+                  </p>
+                )}
+              </div>
+              {importModal !== "importing" && (
+                <button
+                  onClick={closeImportModal}
+                  className="text-muted hover:text-foreground transition-colors text-sm ml-4 shrink-0"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Preview table */}
+            {importModal === "preview" && (
+              <>
+                <div className="overflow-auto flex-1">
+                  <table className="w-full text-xs border-collapse">
+                    <thead className="sticky top-0 bg-surface z-10">
+                      <tr className="text-muted uppercase text-[10px] tracking-widest border-b border-edge">
+                        <th className="px-3 py-2 w-9">
+                          <input
+                            type="checkbox"
+                            checked={importRows.length > 0 && importRows.every((r) => r.include)}
+                            onChange={(e) => setImportRows((prev) => prev.map((r) => ({ ...r, include: e.target.checked })))}
+                            className="accent-amber"
+                          />
+                        </th>
+                        {showTypeColumn && <th className="px-3 py-2 text-left font-medium">Type</th>}
+                        <th className="px-3 py-2 text-left font-medium">Name *</th>
+                        {showIsin && <th className="px-3 py-2 text-left font-medium">ISIN</th>}
+                        {showFolioNumber && <th className="px-3 py-2 text-left font-medium">Folio</th>}
+                        {showQuantity && <th className="px-3 py-2 text-right font-medium">{quantityLabel}</th>}
+                        <th className="px-3 py-2 text-right font-medium">Invested (₹) *</th>
+                        <th className="px-3 py-2 text-right font-medium">Current (₹) *</th>
+                        <th className="px-3 py-2 text-left font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importRows.map((row, i) => {
+                        const status = computeImportStatus(row);
+                        return (
+                          <tr
+                            key={i}
+                            className={`border-b border-edge transition-colors ${row.include ? "hover:bg-white/1.5" : "opacity-40"}`}
+                          >
+                            <td className="px-3 py-1.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={row.include}
+                                onChange={(e) => updateImportRow(i, { include: e.target.checked })}
+                                className="accent-amber"
+                              />
+                            </td>
+
+                            {showTypeColumn && (
+                              <td className="px-2 py-1.5">
+                                <select
+                                  value={row.type}
+                                  onChange={(e) => updateImportRow(i, { type: e.target.value })}
+                                  className="w-full px-1.5 py-0.5 text-xs border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                                >
+                                  {typeOptions?.map((o) => (
+                                    <option key={o.value} value={o.value} style={{ background: "#131615" }}>{o.label}</option>
+                                  ))}
+                                </select>
+                              </td>
+                            )}
+
+                            <td className="px-2 py-1.5 min-w-45">
+                              <input
+                                type="text"
+                                value={row.name}
+                                onChange={(e) => updateImportRow(i, { name: e.target.value })}
+                                className="w-full px-1.5 py-0.5 text-xs border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                              />
+                            </td>
+
+                            {showIsin && (
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  value={row.isin}
+                                  onChange={(e) => updateImportRow(i, { isin: e.target.value })}
+                                  className="w-full px-1.5 py-0.5 text-xs border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                                />
+                              </td>
+                            )}
+
+                            {showFolioNumber && (
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  value={row.folioNumber}
+                                  onChange={(e) => updateImportRow(i, { folioNumber: e.target.value })}
+                                  className="w-full px-1.5 py-0.5 text-xs border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                                />
+                              </td>
+                            )}
+
+                            {showQuantity && (
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="text"
+                                  value={row.quantity}
+                                  onChange={(e) => updateImportRow(i, { quantity: e.target.value })}
+                                  className="w-full px-1.5 py-0.5 text-xs font-mono text-right border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                                />
+                              </td>
+                            )}
+
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                value={row.investedValue}
+                                onChange={(e) => updateImportRow(i, { investedValue: e.target.value })}
+                                className="w-full px-1.5 py-0.5 text-xs font-mono text-right border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                              />
+                            </td>
+
+                            <td className="px-2 py-1.5">
+                              <input
+                                type="text"
+                                value={row.currentValue}
+                                onChange={(e) => updateImportRow(i, { currentValue: e.target.value })}
+                                className="w-full px-1.5 py-0.5 text-xs font-mono text-right border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
+                              />
+                            </td>
+
+                            <td className="px-3 py-1.5 whitespace-nowrap">
+                              {status === "merge" ? (
+                                <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-widest border border-amber/40 text-amber bg-amber/5">
+                                  will merge
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 text-[9px] uppercase tracking-widest border border-gain/40 text-gain bg-gain/5">
+                                  new
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-3.5 border-t border-edge flex items-center justify-between shrink-0">
+                  <button
+                    onClick={closeImportModal}
+                    className="px-4 py-2 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleImportConfirm}
+                    disabled={importSelectedCount === 0}
+                    className="px-4 py-2 text-[10px] uppercase tracking-widest font-semibold bg-amber text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
+                  >
+                    Import {importSelectedCount} holding{importSelectedCount !== 1 ? "s" : ""}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Progress */}
+            {importModal === "importing" && (
+              <div className="p-8 space-y-4 flex-1">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-sm text-foreground">
+                    Saving{" "}
+                    <span className="font-mono font-medium text-amber">{importProgress.done}</span>
+                    {" "}of{" "}
+                    <span className="font-mono font-medium">{importProgress.total}</span>
+                  </p>
+                  <span className="text-[11px] font-mono text-muted">{importPct}%</span>
+                </div>
+                <div className="h-px bg-edge overflow-hidden">
+                  <div
+                    className="h-full bg-amber transition-[width] duration-300 ease-out"
+                    style={{ width: `${importPct}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted truncate">{importProgress.current}</p>
+              </div>
+            )}
+
+            {/* Done */}
+            {importModal === "done" && importSummary && (
+              <div className="p-6 space-y-4 flex-1 overflow-y-auto">
+                <div className="flex items-start gap-3 px-4 py-3.5 border border-gain/30 bg-gain/5">
+                  <span className="text-gain font-mono text-sm shrink-0">✓</span>
+                  <p className="text-sm text-foreground">
+                    <span className="font-medium">
+                      {importSummary.saved} new
+                    </span>
+                    {importSummary.merged > 0 && (
+                      <span className="text-muted">
+                        {" "}+ <span className="text-amber font-medium">{importSummary.merged} merged</span>
+                      </span>
+                    )}
+                  </p>
+                </div>
+
+                {importSummary.failed.length > 0 && (
+                  <div className="border border-loss/30">
+                    <div className="px-4 py-2 bg-loss/5 border-b border-loss/20">
+                      <p className="text-[10px] uppercase tracking-widest text-loss font-medium">
+                        {importSummary.failed.length} failed
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-edge">
+                      {importSummary.failed.map((f, i) => (
+                        <li key={i} className="px-4 py-2.5">
+                          <p className="text-xs text-foreground">{f.name}</p>
+                          <p className="text-[10px] text-loss mt-0.5 font-mono">{f.error}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <button
+                  onClick={closeImportModal}
+                  className="px-4 py-2 text-[10px] uppercase tracking-widest font-semibold bg-amber text-background hover:opacity-90 transition-opacity"
+                >
+                  Close
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -21,8 +21,12 @@ import { relativeTime } from "@/lib/utils";
 type Holding = {
   id: string;
   type: string;
+  name: string;
+  quantity: number | null;
   investedValue: number;
   currentValue: number;
+  isin: string | null;
+  notes: string | null;
   updatedAt: string;
 };
 
@@ -64,6 +68,44 @@ const CHART_STYLE = {
 
 function fmt(n: number) {
   return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function csvEscape(val: string): string {
+  if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+function exportAllCSV(holdings: Holding[]) {
+  const today = new Date().toISOString().slice(0, 10);
+  const headers = ["Type", "Name", "ISIN", "Qty/Units", "Invested Value (Rs)", "Current Value (Rs)", "Gain/Loss (Rs)", "Gain/Loss %", "Notes", "Last Updated"];
+  const rows = holdings.map((h) => {
+    const gain    = h.currentValue - h.investedValue;
+    const gainPct = h.investedValue > 0 ? ((gain / h.investedValue) * 100).toFixed(2) : "0.00";
+    return [
+      csvEscape(TYPE_LABELS[h.type] ?? h.type),
+      csvEscape(h.name),
+      csvEscape(h.isin ?? ""),
+      h.quantity ?? "",
+      h.investedValue.toFixed(2),
+      h.currentValue.toFixed(2),
+      gain.toFixed(2),
+      gainPct,
+      csvEscape(h.notes ?? ""),
+      new Date(h.updatedAt).toLocaleDateString("en-IN"),
+    ].join(",");
+  });
+  const content = [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `pinnacle-full-portfolio-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function fmtShort(n: number) {
@@ -246,10 +288,19 @@ export default function DashboardPage() {
             </span>
           </span>
 
+          <div className="ml-auto flex items-center gap-2">
+            {holdings.length > 0 && (
+              <button
+                onClick={() => exportAllCSV(holdings)}
+                className="px-3 py-1.5 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
+              >
+                Export All
+              </button>
+            )}
           <button
             onClick={handleSaveSnapshot}
             disabled={snapshotDisabled}
-            className={`ml-auto px-3 py-1.5 text-[10px] uppercase tracking-widest border transition-colors ${
+            className={`px-3 py-1.5 text-[10px] uppercase tracking-widest border transition-colors ${
               snapshotStatus === "saved" || (alreadySavedToday && snapshotStatus !== "error")
                 ? "border-gain/40 text-gain cursor-default"
                 : snapshotStatus === "error"
@@ -267,6 +318,7 @@ export default function DashboardPage() {
               ? "Error — retry?"
               : "Save Today's Snapshot"}
           </button>
+          </div>
         </div>
 
         {lastUpdatedAt && (
