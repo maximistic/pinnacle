@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { relativeTime } from "@/lib/utils";
+import CSVImportMapper, { type ImportRow } from "@/components/CSVImportMapper";
 
 // ── Sort persistence ──────────────────────────────────────────────────────────
 
@@ -104,19 +105,6 @@ type FormErrors = Partial<
 
 type ExtraCols = { avgLabel: string; currentLabel: string };
 type BulkModal = "confirm" | "deleting" | "result" | null;
-
-type ImportRow = {
-  idx: number;
-  type: string;
-  name: string;
-  isin: string;
-  folioNumber: string;
-  quantity: string;
-  investedValue: string;
-  currentValue: string;
-  notes: string;
-  include: boolean;
-};
 
 type ImportModal = "preview" | "importing" | "done" | null;
 
@@ -245,6 +233,10 @@ export default function HoldingsTable({
   const defaultType    = typeOptions?.[0]?.value ?? fixedType ?? "";
   const sortKey        = `pinnacle-sort-${title}`;
   const filterKey      = filterTypes?.join(",");
+  const importStorageKey =
+    fixedType === "STOCK"        ? "pinnacle-csv-mapping-stocks" :
+    fixedType === "MUTUAL_FUND"  ? "pinnacle-csv-mapping-mf"     :
+    "pinnacle-csv-mapping-others";
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -277,6 +269,7 @@ export default function HoldingsTable({
   const [editingNotes, setEditingNotes] = useState<{ id: string; value: string } | null>(null);
 
   // CSV import
+  const [mapperFile,     setMapperFile]     = useState<File | null>(null);
   const [importRows,     setImportRows]     = useState<ImportRow[]>([]);
   const [importModal,    setImportModal]    = useState<ImportModal>(null);
   const [importProgress, setImportProgress] = useState({ done: 0, total: 0, current: "" });
@@ -584,67 +577,15 @@ export default function HoldingsTable({
   // ── CSV import ────────────────────────────────────────────────────────────
 
   function handleImportFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text  = (e.target?.result as string) ?? "";
-      const lines = text.trim().split(/\r?\n/);
-      if (lines.length < 2) return;
+    setImportSummary(null);
+    setMapperFile(file);
+    if (importFileRef.current) importFileRef.current.value = "";
+  }
 
-      const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
-      const col     = (name: string) => headers.findIndex((h) => h === name);
-      const colHas  = (sub: string) => headers.findIndex((h) => h.includes(sub));
-
-      const nameIdx     = col("name");
-      const typeColIdx  = col("type");
-      const isinIdx     = col("isin");
-      const folioIdx    = col("folio number");
-      const qtyIdx      = headers.findIndex((h) => h.includes("qty") || h.includes("units") || h === "quantity");
-      const investedIdx = colHas("invested");
-      const currentIdx  = headers.findIndex((h) => h.includes("current value"));
-      const notesIdx    = col("notes");
-
-      const rows: ImportRow[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = parseCSVLine(lines[i]);
-        if (cols.every((c) => !c.trim())) continue;
-
-        const get = (idx: number) => (idx >= 0 ? (cols[idx] ?? "").trim() : "");
-
-        const rawType     = get(typeColIdx);
-        const name        = get(nameIdx);
-        const isin        = get(isinIdx);
-        const folioNumber = get(folioIdx);
-        const quantity    = get(qtyIdx);
-        const investedValue = get(investedIdx);
-        const currentValue  = get(currentIdx);
-        const notes       = get(notesIdx);
-
-        const resolvedType =
-          fixedType ??
-          typeOptions?.find((o) => o.value === rawType || o.label.toLowerCase() === rawType.toLowerCase())?.value ??
-          typeOptions?.[0]?.value ??
-          rawType;
-
-        rows.push({
-          idx: i - 1,
-          type: resolvedType,
-          name,
-          isin,
-          folioNumber,
-          quantity,
-          investedValue,
-          currentValue,
-          notes,
-          include: true,
-        });
-      }
-
-      setImportRows(rows);
-      setImportSummary(null);
-      setImportModal("preview");
-      if (importFileRef.current) importFileRef.current.value = "";
-    };
-    reader.readAsText(file);
+  function handleMapped(rows: ImportRow[]) {
+    setImportRows(rows);
+    setMapperFile(null);
+    setImportModal("preview");
   }
 
   function computeImportStatus(row: ImportRow): "new" | "merge" {
@@ -726,6 +667,7 @@ export default function HoldingsTable({
     setImportModal(null);
     setImportRows([]);
     setImportSummary(null);
+    setMapperFile(null);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1252,6 +1194,22 @@ export default function HoldingsTable({
             )}
           </div>
         </div>
+      )}
+
+      {/* ── CSV column mapper ────────────────────────────────────────────── */}
+      {mapperFile && (
+        <CSVImportMapper
+          file={mapperFile}
+          fixedType={fixedType}
+          typeOptions={typeOptions}
+          showQuantity={showQuantity}
+          quantityLabel={quantityLabel}
+          showIsin={showIsin}
+          showFolioNumber={showFolioNumber}
+          storageKey={importStorageKey}
+          onMapped={handleMapped}
+          onClose={() => { setMapperFile(null); }}
+        />
       )}
 
       {/* ── CSV import modal ──────────────────────────────────────────────── */}
