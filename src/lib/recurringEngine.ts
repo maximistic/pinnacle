@@ -73,6 +73,7 @@ function computeNextDue(
 
 // ── Exported engine functions ─────────────────────────────────────────────────
 
+/** Returns the next due date for a recurring rule based on its frequency and last run date. */
 export function getNextDueDate(rule: RecurringRule): Date {
   return computeNextDue(
     rule.frequency,
@@ -82,6 +83,7 @@ export function getNextDueDate(rule: RecurringRule): Date {
   );
 }
 
+/** Returns true if a rule is ACTIVE and its next due date is on or before the given date. */
 export function isDue(rule: RecurringRule, asOf: Date): boolean {
   if (rule.status !== "ACTIVE") return false;
   const nextDue = getNextDueDate(rule);
@@ -90,6 +92,7 @@ export function isDue(rule: RecurringRule, asOf: Date): boolean {
   return true;
 }
 
+/** Processes a due recurring rule: creates a transaction and updates the holding's invested value. */
 export async function processRule(rule: RecurringRule): Promise<CreatedTx | null> {
   if (!rule.holdingId) return null;
 
@@ -153,7 +156,7 @@ export async function processRule(rule: RecurringRule): Promise<CreatedTx | null
   return txn;
 }
 
-// RD and EPFO — generates all past installments that haven't been recorded yet
+/** Generates all missing historical transactions for RD and EPFO rules up to today. */
 export async function generateHistoricalTransactions(rule: RecurringRule): Promise<CreatedTx[]> {
   if (!["RD", "EPFO"].includes(rule.ruleType) || !rule.holdingId) return [];
 

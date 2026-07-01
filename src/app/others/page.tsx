@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import HoldingsTable, { type Holding, type RecurringRuleMeta } from "@/components/HoldingsTable";
 import TransactionDrawer from "@/components/TransactionDrawer";
 import OthersAddModal from "@/components/OthersAddModal";
+import { formatINR } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ const SPECIAL_TYPES    = ["RD", "EPFO", "US_STOCK"];
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatINR(n);
 }
 
 function rdMaturity(monthly: number, annualRatePct: number, months: number): number {
@@ -171,6 +172,7 @@ export default function OthersPage() {
         secondaryValues={secondaryValues}
         externalRefreshTrigger={refreshTrigger}
         onRowClick={handleRowClick}
+        showPriceRefresh={true}
       />
       {showAddModal && (
         <OthersAddModal

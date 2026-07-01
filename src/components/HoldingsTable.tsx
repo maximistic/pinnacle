@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { relativeTime, formatINR } from "@/lib/utils";
 import CSVImportMapper, { type ImportRow } from "@/components/CSVImportMapper";
+import Toast from "@/components/Toast";
 
 // ── Sort persistence ──────────────────────────────────────────────────────────
 
@@ -84,6 +85,9 @@ export type Holding = {
   updatedAt: string;
   currency?: string;
   exchangeRate?: number | null;
+  ticker: string | null;
+  amfi:   string | null;
+  lastPriceFetchedAt: string | null;
 };
 
 export type TypeOption = { value: string; label: string };
@@ -108,6 +112,8 @@ type FormState = {
   isin: string;
   folioNumber: string;
   notes: string;
+  ticker: string;
+  amfi:   string;
 };
 
 type FormErrors = Partial<
@@ -131,6 +137,9 @@ type Props = {
   extraCols?: ExtraCols;
   showIsin?: boolean;
   showFolioNumber?: boolean;
+  showTicker?:       boolean;
+  showAmfi?:         boolean;
+  showPriceRefresh?: boolean;
   onRowClick?: (holding: Holding) => void;
   emptyMessage?: string;
   specialTypes?: string[];
@@ -243,6 +252,9 @@ export default function HoldingsTable({
   extraCols,
   showIsin       = false,
   showFolioNumber = false,
+  showTicker     = false,
+  showAmfi       = false,
+  showPriceRefresh = false,
   onRowClick,
   emptyMessage,
   specialTypes,
@@ -264,7 +276,7 @@ export default function HoldingsTable({
   // ── State ─────────────────────────────────────────────────────────────────
 
   function makeEmptyForm(): FormState {
-    return { type: defaultType, name: "", quantity: "", investedValue: "", currentValue: "", isin: "", folioNumber: "", notes: "" };
+    return { type: defaultType, name: "", quantity: "", investedValue: "", currentValue: "", isin: "", folioNumber: "", notes: "", ticker: "", amfi: "" };
   }
 
   const [holdings,     setHoldings]     = useState<Holding[]>([]);
@@ -297,6 +309,10 @@ export default function HoldingsTable({
   const [importModal,    setImportModal]    = useState<ImportModal>(null);
   const [importProgress, setImportProgress] = useState({ done: 0, total: 0, current: "" });
   const [importSummary,  setImportSummary]  = useState<{ saved: number; merged: number; failed: { name: string; error: string }[] } | null>(null);
+
+  // Price refresh
+  const [refreshing,  setRefreshing]  = useState(false);
+  const [toast,       setToast]       = useState<{ message: string; type: "success"|"error"|"warn" } | null>(null);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
 
@@ -429,6 +445,8 @@ export default function HoldingsTable({
       isin: h.isin ?? "",
       folioNumber: h.folioNumber ?? "",
       notes: h.notes ?? "",
+      ticker: h.ticker ?? "",
+      amfi:   h.amfi ?? "",
     });
     setFormErrors({});
     setSubmitError(null);
@@ -470,6 +488,8 @@ export default function HoldingsTable({
         notes: form.notes.trim() || null,
         isin:         showIsin         ? (form.isin.trim() || null)         : undefined,
         folioNumber:  showFolioNumber  ? (form.folioNumber.trim() || null)  : undefined,
+        ticker:       showTicker       ? (form.ticker.trim() || null)       : undefined,
+        amfi:         showAmfi         ? (form.amfi.trim() || null)         : undefined,
       };
 
       const isAdd = modalMode === "add";
@@ -705,6 +725,28 @@ export default function HoldingsTable({
     setMapperFile(null);
   }
 
+  // ── Price refresh ─────────────────────────────────────────────────────────
+
+  async function handlePriceRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/prices/refresh", { method: "POST" });
+      const data = await res.json();
+      if (res.status === 429) {
+        setToast({ message: `Prices recently updated. Try again in ${data.retryAfterMinutes ?? "?"} minutes.`, type: "warn" });
+        return;
+      }
+      if (!res.ok) throw new Error();
+      setToast({ message: `Updated ${data.updated} · Failed ${data.failed} · Skipped ${data.skipped}`, type: "success" });
+      await fetchHoldings();
+    } catch {
+      setToast({ message: "Price refresh failed. Please try again.", type: "error" });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   const importSelectedCount = importRows.filter((r) => r.include).length;
@@ -725,6 +767,15 @@ export default function HoldingsTable({
               className="px-3 py-1.5 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 transition-colors"
             >
               Export CSV
+            </button>
+          )}
+          {showPriceRefresh && (
+            <button
+              onClick={handlePriceRefresh}
+              disabled={refreshing}
+              className="px-3 py-1.5 text-[10px] uppercase tracking-widest border border-edge text-muted hover:text-foreground hover:border-foreground/30 disabled:opacity-40 transition-colors"
+            >
+              {refreshing ? "Updating…" : "Refresh Prices"}
             </button>
           )}
           <button
@@ -1148,6 +1199,34 @@ export default function HoldingsTable({
                 </Field>
               )}
 
+              {showTicker && (
+                <Field label="NSE Ticker">
+                  <input
+                    type="text"
+                    value={form.ticker}
+                    onChange={(e) => setForm((f) => ({ ...f, ticker: e.target.value.toUpperCase() }))}
+                    className={inputCls}
+                    placeholder="e.g. RELIANCE, HDFCBANK"
+                    maxLength={20}
+                  />
+                  <p className="text-[10px] text-muted mt-1">Required for automatic price updates. Enter without .NS</p>
+                </Field>
+              )}
+
+              {showAmfi && (
+                <Field label="AMFI Code">
+                  <input
+                    type="text"
+                    value={form.amfi}
+                    onChange={(e) => setForm((f) => ({ ...f, amfi: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. 122639"
+                    maxLength={12}
+                  />
+                  <p className="text-[10px] text-muted mt-1">Find yours at mfapi.in — required for automatic NAV updates</p>
+                </Field>
+              )}
+
               <Field label="Notes">
                 <textarea
                   value={form.notes}
@@ -1266,6 +1345,15 @@ export default function HoldingsTable({
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Toast ────────────────────────────────────────────────────────── */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
       )}
 
       {/* ── CSV column mapper ────────────────────────────────────────────── */}

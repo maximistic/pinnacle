@@ -3,15 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { isValidType } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type");
+  try {
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type");
 
-  const holdings = await prisma.holding.findMany({
-    where: type ? { type } : undefined,
-    orderBy: { createdAt: "desc" },
-  });
+    const holdings = await prisma.holding.findMany({
+      where: type ? { type } : undefined,
+      orderBy: { createdAt: "desc" },
+    });
 
-  return NextResponse.json(holdings);
+    return NextResponse.json(holdings);
+  } catch (err) {
+    console.error("GET holdings error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
 
 type IncomingTransaction = {
@@ -56,6 +61,7 @@ async function saveTransactions(holdingId: string, transactions: IncomingTransac
 }
 
 export async function POST(request: NextRequest) {
+  try {
   const body = await request.json();
   const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source, transactions, currency, exchangeRate } = body;
 
@@ -160,4 +166,8 @@ export async function POST(request: NextRequest) {
 
   await saveTransactions(holding.id, transactions);
   return NextResponse.json(holding, { status: 201 });
+  } catch (err) {
+    console.error("POST holdings error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }
