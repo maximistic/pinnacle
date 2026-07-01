@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { relativeTime } from "@/lib/utils";
 
 type Holding = {
   id: string;
   type: string;
   investedValue: number;
   currentValue: number;
+  updatedAt: string;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -79,8 +81,11 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const totalInvested = holdings.reduce((s, h) => s + h.investedValue, 0);
-  const totalCurrent  = holdings.reduce((s, h) => s + h.currentValue,  0);
+  const totalInvested   = holdings.reduce((s, h) => s + h.investedValue, 0);
+  const totalCurrent    = holdings.reduce((s, h) => s + h.currentValue,  0);
+  const lastUpdatedAt   = holdings.length
+    ? holdings.reduce((latest, h) => (h.updatedAt > latest ? h.updatedAt : latest), holdings[0].updatedAt)
+    : null;
   const totalGain     = totalCurrent - totalInvested;
   const gainPct       = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
 
@@ -147,6 +152,12 @@ export default function DashboardPage() {
             </span>
           </span>
         </div>
+        {lastUpdatedAt && (
+          <p className="mt-2 text-[10px] text-muted/60">
+            Portfolio last updated:{" "}
+            <span className="text-muted">{relativeTime(lastUpdatedAt)}</span>
+          </p>
+        )}
       </div>
 
       {/* Stat cards */}
