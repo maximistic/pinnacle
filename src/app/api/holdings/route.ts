@@ -57,12 +57,12 @@ async function saveTransactions(holdingId: string, transactions: IncomingTransac
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source, transactions } = body;
+  const { type, name, quantity, investedValue, currentValue, notes, isin, folioNumber, source, transactions, currency, exchangeRate } = body;
 
   // --- Validation ---
   if (!isValidType(type)) {
     return NextResponse.json(
-      { error: "Type must be one of: STOCK, MUTUAL_FUND, FD, GOLD, REAL_ESTATE, OTHER" },
+      { error: "Type must be one of: STOCK, MUTUAL_FUND, FD, GOLD, REAL_ESTATE, OTHER, RD, EPFO, US_STOCK" },
       { status: 400 }
     );
   }
@@ -153,6 +153,8 @@ export async function POST(request: NextRequest) {
       isin: trimmedIsin || null,
       folioNumber: trimmedFolio || null,
       source: source === "CAS_UPLOAD" ? "CAS_UPLOAD" : "MANUAL",
+      currency: currency ?? "INR",
+      exchangeRate: exchangeRate ?? null,
     },
   });
 

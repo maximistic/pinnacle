@@ -5,6 +5,9 @@ export const VALID_TYPES = [
   "GOLD",
   "REAL_ESTATE",
   "OTHER",
+  "RD",
+  "EPFO",
+  "US_STOCK",
 ] as const;
 
 export type HoldingType = (typeof VALID_TYPES)[number];

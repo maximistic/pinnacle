@@ -82,9 +82,20 @@ export type Holding = {
   isin: string | null;
   folioNumber: string | null;
   updatedAt: string;
+  currency: string;
+  exchangeRate: number | null;
 };
 
 export type TypeOption = { value: string; label: string };
+
+export type RecurringRuleMeta = {
+  id: string;
+  ruleType: string;
+  status: string;
+  amount: number;
+  dayOfMonth: number;
+  nextDue: string | null;
+};
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -121,6 +132,11 @@ type Props = {
   showIsin?: boolean;
   showFolioNumber?: boolean;
   onRowClick?: (holding: Holding) => void;
+  specialTypes?: string[];
+  onSpecialTypeAdd?: (type: string) => void;
+  recurringRulesByHoldingId?: Record<string, RecurringRuleMeta>;
+  secondaryValues?: Record<string, string>;
+  externalRefreshTrigger?: number;
 };
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -227,10 +243,16 @@ export default function HoldingsTable({
   showIsin       = false,
   showFolioNumber = false,
   onRowClick,
+  specialTypes,
+  onSpecialTypeAdd,
+  recurringRulesByHoldingId,
+  secondaryValues,
+  externalRefreshTrigger,
 }: Props) {
   const showTypeColumn = !!typeOptions;
   const hasExtraCols   = !!extraCols && showQuantity;
   const defaultType    = typeOptions?.[0]?.value ?? fixedType ?? "";
+
   const sortKey        = `pinnacle-sort-${title}`;
   const filterKey      = filterTypes?.join(",");
   const importStorageKey =
@@ -320,6 +342,8 @@ export default function HoldingsTable({
   const selectedCount         = selectedIds.size;
   const selectedHoldings      = holdings.filter((h) => selectedIds.has(h.id));
 
+  const isSpecialType = !!(specialTypes?.includes(form.type) && onSpecialTypeAdd);
+
   // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -350,6 +374,11 @@ export default function HoldingsTable({
   }, [apiType, filterKey]);
 
   useEffect(() => { fetchHoldings(); }, [fetchHoldings]);
+
+  useEffect(() => {
+    if (externalRefreshTrigger !== undefined) fetchHoldings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalRefreshTrigger]);
 
   // ── Sort helper ───────────────────────────────────────────────────────────
 
@@ -418,6 +447,11 @@ export default function HoldingsTable({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isSpecialType) {
+      onSpecialTypeAdd!(form.type);
+      closeModal();
+      return;
+    }
     const errors = validateForm(form, showQuantity);
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
 
@@ -864,10 +898,28 @@ export default function HoldingsTable({
 
                     {showTypeColumn && <td className="px-4 py-2.5 text-xs text-muted">{typeLabel}</td>}
                     <td
-                      className={`px-4 py-2.5 text-sm text-foreground ${onRowClick ? "cursor-pointer hover:text-amber transition-colors" : ""}`}
+                      className={`px-4 py-2.5 ${onRowClick ? "cursor-pointer" : ""}`}
                       onClick={onRowClick ? () => onRowClick(h) : undefined}
                     >
-                      {h.name}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {recurringRulesByHoldingId?.[h.id] && (
+                          <span className="relative group/dot shrink-0">
+                            <span className={`block w-1.5 h-1.5 rounded-full ${
+                              recurringRulesByHoldingId[h.id].status === "ACTIVE" ? "bg-gain animate-pulse" : "bg-muted/30"
+                            }`} />
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 z-20 hidden group-hover/dot:block whitespace-nowrap px-2 py-1 text-[9px] font-mono bg-surface border border-edge text-muted shadow-sm">
+                              {recurringRulesByHoldingId[h.id].ruleType} {recurringRulesByHoldingId[h.id].status === "ACTIVE" ? "active" : "paused"}
+                              {recurringRulesByHoldingId[h.id].nextDue ? ` — next: ${recurringRulesByHoldingId[h.id].nextDue}` : ""}
+                            </span>
+                          </span>
+                        )}
+                        <span className={`text-sm truncate ${onRowClick ? "text-foreground hover:text-amber transition-colors" : "text-foreground"}`}>
+                          {h.name}
+                        </span>
+                        {h.currency && h.currency !== "INR" && (
+                          <span className="shrink-0 text-[8px] px-1 py-0.5 border border-amber/40 text-amber/60 font-mono">{h.currency}</span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Notes cell */}
@@ -921,6 +973,9 @@ export default function HoldingsTable({
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-xs text-foreground tabular-nums">
                       {fmt(h.currentValue)}
+                      {secondaryValues?.[h.id] && (
+                        <div className="text-[9px] text-muted/50 font-mono mt-0.5 leading-none">{secondaryValues[h.id]}</div>
+                      )}
                     </td>
                     <td className={`px-4 py-2.5 text-right font-mono text-xs tabular-nums font-medium ${gain >= 0 ? "text-gain" : "text-loss"}`}>
                       {gain >= 0 ? "+" : ""}{fmt(gain)}
@@ -1008,85 +1063,95 @@ export default function HoldingsTable({
                 </Field>
               )}
 
-              <Field label="Name" required error={formErrors.name}>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); clearFieldError("name"); }}
-                  className={inputCls}
-                  placeholder="Enter name"
-                />
-              </Field>
+              {isSpecialType ? (
+                <div className="py-3 px-4 border border-amber/20 bg-amber/3 text-xs text-muted leading-relaxed">
+                  {form.type === "RD" && "Recurring Deposits require additional setup — installment amount, interest rate, and tenure."}
+                  {form.type === "EPFO" && "EPFO requires additional setup — employee/employer contributions and start date."}
+                  {form.type === "US_STOCK" && "US Stocks require additional setup — ticker, USD prices, and exchange rate."}
+                </div>
+              ) : (
+                <>
+                  <Field label="Name" required error={formErrors.name}>
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); clearFieldError("name"); }}
+                      className={inputCls}
+                      placeholder="Enter name"
+                    />
+                  </Field>
 
-              {showQuantity && (
-                <Field label={quantityLabel} error={formErrors.quantity}>
-                  <input
-                    type="number"
-                    value={form.quantity}
-                    onChange={(e) => { setForm((f) => ({ ...f, quantity: e.target.value })); clearFieldError("quantity"); }}
-                    step="any" min="0"
-                    className={inputCls}
-                    placeholder="e.g. 10"
-                  />
-                </Field>
+                  {showQuantity && (
+                    <Field label={quantityLabel} error={formErrors.quantity}>
+                      <input
+                        type="number"
+                        value={form.quantity}
+                        onChange={(e) => { setForm((f) => ({ ...f, quantity: e.target.value })); clearFieldError("quantity"); }}
+                        step="any" min="0"
+                        className={inputCls}
+                        placeholder="e.g. 10"
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="Invested Value (₹)" required error={formErrors.investedValue}>
+                    <input
+                      type="number"
+                      value={form.investedValue}
+                      onChange={(e) => { setForm((f) => ({ ...f, investedValue: e.target.value })); clearFieldError("investedValue"); }}
+                      step="any" min="0"
+                      className={inputCls}
+                      placeholder="e.g. 50000"
+                    />
+                  </Field>
+
+                  <Field label="Current Value (₹)" required error={formErrors.currentValue}>
+                    <input
+                      type="number"
+                      value={form.currentValue}
+                      onChange={(e) => { setForm((f) => ({ ...f, currentValue: e.target.value })); clearFieldError("currentValue"); }}
+                      step="any" min="0"
+                      className={inputCls}
+                      placeholder="e.g. 55000"
+                    />
+                  </Field>
+
+                  {showIsin && (
+                    <Field label="ISIN">
+                      <input
+                        type="text"
+                        value={form.isin}
+                        onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
+                        className={inputCls}
+                        placeholder="e.g. INE001A01036"
+                        maxLength={12}
+                      />
+                    </Field>
+                  )}
+
+                  {showFolioNumber && (
+                    <Field label="Folio Number">
+                      <input
+                        type="text"
+                        value={form.folioNumber}
+                        onChange={(e) => setForm((f) => ({ ...f, folioNumber: e.target.value }))}
+                        className={inputCls}
+                        placeholder="e.g. 1234567/89"
+                      />
+                    </Field>
+                  )}
+
+                  <Field label="Notes">
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={2}
+                      className={`${inputCls} resize-none`}
+                      placeholder="Optional notes…"
+                    />
+                  </Field>
+                </>
               )}
-
-              <Field label="Invested Value (₹)" required error={formErrors.investedValue}>
-                <input
-                  type="number"
-                  value={form.investedValue}
-                  onChange={(e) => { setForm((f) => ({ ...f, investedValue: e.target.value })); clearFieldError("investedValue"); }}
-                  step="any" min="0"
-                  className={inputCls}
-                  placeholder="e.g. 50000"
-                />
-              </Field>
-
-              <Field label="Current Value (₹)" required error={formErrors.currentValue}>
-                <input
-                  type="number"
-                  value={form.currentValue}
-                  onChange={(e) => { setForm((f) => ({ ...f, currentValue: e.target.value })); clearFieldError("currentValue"); }}
-                  step="any" min="0"
-                  className={inputCls}
-                  placeholder="e.g. 55000"
-                />
-              </Field>
-
-              {showIsin && (
-                <Field label="ISIN">
-                  <input
-                    type="text"
-                    value={form.isin}
-                    onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
-                    className={inputCls}
-                    placeholder="e.g. INE001A01036"
-                    maxLength={12}
-                  />
-                </Field>
-              )}
-
-              {showFolioNumber && (
-                <Field label="Folio Number">
-                  <input
-                    type="text"
-                    value={form.folioNumber}
-                    onChange={(e) => setForm((f) => ({ ...f, folioNumber: e.target.value }))}
-                    className={inputCls}
-                    placeholder="e.g. 1234567/89"
-                  />
-                </Field>
-              )}
-
-              <Field label="Notes">
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  rows={2}
-                  className={`${inputCls} resize-none`}
-                  placeholder="Optional notes…"
-                />
-              </Field>
 
               <div className="flex gap-2 pt-1">
                 <button
@@ -1094,7 +1159,7 @@ export default function HoldingsTable({
                   disabled={submitting}
                   className="flex-1 py-2 text-[10px] uppercase tracking-widest font-semibold bg-amber text-background hover:opacity-90 disabled:opacity-40 transition-opacity"
                 >
-                  {submitting ? "Saving…" : "Save"}
+                  {isSpecialType ? "Continue →" : submitting ? "Saving…" : "Save"}
                 </button>
                 <button
                   type="button"

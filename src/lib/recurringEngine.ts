@@ -153,9 +153,17 @@ export async function processRule(rule: RecurringRule): Promise<CreatedTx | null
   return txn;
 }
 
-// RD only — generates all past installments that haven't been recorded yet
+// RD and EPFO — generates all past installments that haven't been recorded yet
 export async function generateHistoricalTransactions(rule: RecurringRule): Promise<CreatedTx[]> {
-  if (rule.ruleType !== "RD" || !rule.holdingId) return [];
+  if (!["RD", "EPFO"].includes(rule.ruleType) || !rule.holdingId) return [];
+
+  const isEpfo = rule.ruleType === "EPFO";
+  const txnType = isEpfo ? "EPFO" : "RD_INSTALLMENT";
+  const employer = rule.employerMatch ?? 0;
+  const txnAmount = isEpfo ? rule.amount + employer : rule.amount;
+  const txnDescription = isEpfo
+    ? `EPFO — Employee: ₹${rule.amount} + Employer: ₹${employer}`
+    : `RD Installment — ${rule.name}`;
 
   const now = new Date();
   const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -178,11 +186,11 @@ export async function generateHistoricalTransactions(rule: RecurringRule): Promi
 
   if (dueDates.length === 0) return [];
 
-  // Fetch existing RD_INSTALLMENT transactions to deduplicate
+  // Fetch existing transactions of the appropriate type to deduplicate
   const existing = await prisma.transaction.findMany({
     where: {
       holdingId: rule.holdingId,
-      type: "RD_INSTALLMENT",
+      type: txnType,
       date: { gte: startDate, lte: cutoff },
     },
     select: { date: true },
@@ -199,9 +207,9 @@ export async function generateHistoricalTransactions(rule: RecurringRule): Promi
       data: {
         holdingId: rule.holdingId,
         date,
-        description: `RD Installment — ${rule.name}`,
-        type: "RD_INSTALLMENT",
-        amount: rule.amount,
+        description: txnDescription,
+        type: txnType,
+        amount: txnAmount,
         units: null,
         nav: null,
         balance: null,
@@ -213,7 +221,7 @@ export async function generateHistoricalTransactions(rule: RecurringRule): Promi
   if (created.length > 0) {
     await prisma.holding.update({
       where: { id: rule.holdingId },
-      data: { investedValue: { increment: rule.amount * created.length } },
+      data: { investedValue: { increment: txnAmount * created.length } },
     });
   }
 

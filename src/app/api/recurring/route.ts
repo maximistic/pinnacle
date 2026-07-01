@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const holdingId = searchParams.get("holdingId");
   const rules = await prisma.recurringRule.findMany({
+    where: holdingId ? { holdingId } : undefined,
     include: { holding: { select: { name: true, type: true } } },
     orderBy: { createdAt: "desc" },
   });

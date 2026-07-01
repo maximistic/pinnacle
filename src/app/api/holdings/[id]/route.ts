@@ -4,10 +4,17 @@ import { isValidType } from "@/lib/validation";
 
 type Params = { params: Promise<{ id: string }> };
 
+export async function GET(_request: NextRequest, { params }: Params) {
+  const { id } = await params;
+  const holding = await prisma.holding.findUnique({ where: { id } });
+  if (!holding) return NextResponse.json({ error: "Holding not found" }, { status: 404 });
+  return NextResponse.json(holding);
+}
+
 export async function PUT(request: NextRequest, { params }: Params) {
   const { id } = await params;
   const body = await request.json();
-  const { type, name, quantity, investedValue, currentValue, notes, source, isin, folioNumber } =
+  const { type, name, quantity, investedValue, currentValue, notes, source, isin, folioNumber, currency, exchangeRate } =
     body;
 
   const existing = await prisma.holding.findUnique({ where: { id } });
@@ -18,7 +25,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
   // --- Validation (only for fields present in the request body) ---
   if (type !== undefined && !isValidType(type)) {
     return NextResponse.json(
-      { error: "Type must be one of: STOCK, MUTUAL_FUND, FD, GOLD, REAL_ESTATE, OTHER" },
+      { error: "Type must be one of: STOCK, MUTUAL_FUND, FD, GOLD, REAL_ESTATE, OTHER, RD, EPFO, US_STOCK" },
       { status: 400 }
     );
   }
@@ -73,6 +80,8 @@ export async function PUT(request: NextRequest, { params }: Params) {
       ...(folioNumber !== undefined && {
         folioNumber: typeof folioNumber === "string" ? folioNumber.trim() || null : null,
       }),
+      ...(currency !== undefined && { currency }),
+      ...(exchangeRate !== undefined && { exchangeRate }),
     },
   });
 
