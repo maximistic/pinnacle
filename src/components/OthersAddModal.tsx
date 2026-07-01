@@ -297,7 +297,7 @@ export default function OthersAddModal({ presetType, onSaved, onClose }: Props) 
           <Field label="Type" required>
             <select value={type} onChange={(e) => { setType(e.target.value); setSaveError(null); }} className={selectCls}>
               {["FD","GOLD","REAL_ESTATE","RD","EPFO","US_STOCK","OTHER"].map((v) => (
-                <option key={v} value={v} style={{ background: "#131615" }}>{typeLabel(v)}</option>
+                <option key={v} value={v} style={{ background: "var(--surface)" }}>{typeLabel(v)}</option>
               ))}
             </select>
           </Field>
@@ -372,8 +372,8 @@ export default function OthersAddModal({ presetType, onSaved, onClose }: Props) 
               </Field>
               <Field label="Exchange">
                 <select value={exchange} onChange={(e) => setExchange(e.target.value)} className={selectCls}>
-                  <option value="NYSE" style={{ background: "#131615" }}>NYSE</option>
-                  <option value="NASDAQ" style={{ background: "#131615" }}>NASDAQ</option>
+                  <option value="NYSE" style={{ background: "var(--surface)" }}>NYSE</option>
+                  <option value="NASDAQ" style={{ background: "var(--surface)" }}>NASDAQ</option>
                 </select>
               </Field>
               <Field label="Quantity" required>

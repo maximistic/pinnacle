@@ -302,12 +302,12 @@ export default function SettingsPage() {
               value={snapshotFreq}
               onChange={(e) => setSnapshotFreq(e.target.value)}
               className={selectCls}
-              style={{ background: "#131615" }}
+              style={{ background: "var(--surface)" }}
             >
-              <option value="OFF" style={{ background: "#131615" }}>Off</option>
-              <option value="DAILY" style={{ background: "#131615" }}>Daily</option>
-              <option value="WEEKLY" style={{ background: "#131615" }}>Weekly (Monday)</option>
-              <option value="MONTHLY" style={{ background: "#131615" }}>Monthly (1st)</option>
+              <option value="OFF" style={{ background: "var(--surface)" }}>Off</option>
+              <option value="DAILY" style={{ background: "var(--surface)" }}>Daily</option>
+              <option value="WEEKLY" style={{ background: "var(--surface)" }}>Weekly (Monday)</option>
+              <option value="MONTHLY" style={{ background: "var(--surface)" }}>Monthly (1st)</option>
             </select>
           </div>
 

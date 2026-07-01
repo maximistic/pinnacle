@@ -495,9 +495,9 @@ export default function CSVImportMapper({
                         : "border-edge text-muted"
                     }`}
                   >
-                    <option value="" style={{ background: "#131615" }}>— Skip —</option>
+                    <option value="" style={{ background: "var(--surface)" }}>— Skip —</option>
                     {headers.map((h) => (
-                      <option key={h} value={h} style={{ background: "#131615" }}>
+                      <option key={h} value={h} style={{ background: "var(--surface)" }}>
                         {h}
                       </option>
                     ))}

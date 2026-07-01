@@ -1,25 +1,54 @@
 @import "tailwindcss";
 
+/* ── Defaults (prevents flash when no JS or script blocked) ─────────── */
 :root {
-  --background: #0B0D0C;
-  --foreground: #E4E6E1;
-  --surface: #131615;
-  --edge: #262A28;
-  --muted: #7A827C;
-  --gain: #3FB950;
-  --loss: #E5534B;
-  --amber: #D9A441;
+  --background:    #0D0F0E;
+  --surface:       #1A1D1B;
+  --surface-raised:#222622;
+  --edge:          #2E3330;
+  --foreground:    #F0F2EE;
+  --muted:         #8A9490;
+  --gain:          #4ACA5C;
+  --loss:          #F05B52;
+  --amber:         #E0AC45;
+}
+
+/* ── Dark theme ─────────────────────────────────────────────────────── */
+.dark {
+  --background:    #0D0F0E;
+  --surface:       #1A1D1B;
+  --surface-raised:#222622;
+  --edge:          #2E3330;
+  --foreground:    #F0F2EE;
+  --muted:         #8A9490;
+  --gain:          #4ACA5C;
+  --loss:          #F05B52;
+  --amber:         #E0AC45;
+}
+
+/* ── Light theme ────────────────────────────────────────────────────── */
+.light {
+  --background:    #F5F5F0;
+  --surface:       #FFFFFF;
+  --surface-raised:#F0F0EB;
+  --edge:          #DDDDD8;
+  --foreground:    #141614;
+  --muted:         #6B7280;
+  --gain:          #1A8A2E;
+  --loss:          #C5302A;
+  --amber:         #B8860B;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-edge: var(--edge);
-  --color-muted: var(--muted);
-  --color-gain: var(--gain);
-  --color-loss: var(--loss);
-  --color-amber: var(--amber);
+  --color-background:     var(--background);
+  --color-foreground:     var(--foreground);
+  --color-surface:        var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-edge:           var(--edge);
+  --color-muted:          var(--muted);
+  --color-gain:           var(--gain);
+  --color-loss:           var(--loss);
+  --color-amber:          var(--amber);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-ibm-plex-mono), ui-monospace, "Courier New", monospace;
 }
@@ -27,4 +56,19 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* ── Theme transition ───────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+/* Exclude transitions on transforms/layout to prevent jank */
+[class*="translate"],
+[class*="scale"],
+[class*="rotate"],
+[class*="animate"] {
+  transition: none;
 }

@@ -17,6 +17,7 @@ import {
   YAxis,
 } from "recharts";
 import { relativeTime, formatINR } from "@/lib/utils";
+import { useTheme } from "@/context/ThemeContext";
 
 type Holding = {
   id: string;
@@ -55,15 +56,6 @@ const TYPE_COLORS: Record<string, string> = {
   GOLD: "#eab308",
   REAL_ESTATE: "#10b981",
   OTHER: "#6b7280",
-};
-
-const CHART_STYLE = {
-  fontSize: 11,
-  fontFamily: "var(--font-ibm-plex-mono)",
-  background: "#131615",
-  border: "1px solid #262A28",
-  borderRadius: 2,
-  color: "#E4E6E1",
 };
 
 function fmt(n: number) {
@@ -169,6 +161,26 @@ export default function DashboardPage() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [snapshotStatus, setSnapshotStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [savedThisSession, setSavedThisSession] = useState(false);
+
+  const { theme } = useTheme();
+  const chartColors = {
+    grid:   theme === "dark" ? "#2E3330" : "#DDDDD8",
+    text:   theme === "dark" ? "#8A9490" : "#6B7280",
+    accent: theme === "dark" ? "#E0AC45" : "#B8860B",
+    gain:   theme === "dark" ? "#4ACA5C" : "#1A8A2E",
+    loss:   theme === "dark" ? "#F05B52" : "#C5302A",
+    surface:theme === "dark" ? "#1A1D1B" : "#FFFFFF",
+    foreground: theme === "dark" ? "#F0F2EE" : "#141614",
+  };
+
+  const chartStyle = {
+    fontSize: 11,
+    fontFamily: "var(--font-ibm-plex-mono)",
+    background: chartColors.surface,
+    border: `1px solid ${chartColors.grid}`,
+    borderRadius: 2,
+    color: chartColors.foreground,
+  };
 
   useEffect(() => {
     Promise.all([
@@ -370,13 +382,13 @@ export default function DashboardPage() {
                   </Pie>
                   <Tooltip
                     formatter={(value: unknown) => [`₹${fmt(value as number)}`, "Current Value"]}
-                    contentStyle={CHART_STYLE}
+                    contentStyle={chartStyle}
                   />
                   <Legend
                     iconType="circle"
                     iconSize={7}
                     formatter={(value: string) => (
-                      <span style={{ fontSize: 11, color: "#7A827C" }}>{value}</span>
+                      <span style={{ fontSize: 11, color: chartColors.text }}>{value}</span>
                     )}
                   />
                 </PieChart>
@@ -455,32 +467,32 @@ export default function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#262A28" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: "#7A827C", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+                    tick={{ fill: chartColors.text, fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
                     tickFormatter={fmtShort}
-                    tick={{ fill: "#7A827C", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+                    tick={{ fill: chartColors.text, fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
                     axisLine={false}
                     tickLine={false}
                     width={52}
                   />
                   <Tooltip
                     formatter={(value: unknown) => [`₹${fmt(value as number)}`, "Portfolio Value"]}
-                    contentStyle={CHART_STYLE}
-                    labelStyle={{ color: "#7A827C", fontSize: 10 }}
+                    contentStyle={chartStyle}
+                    labelStyle={{ color: chartColors.text, fontSize: 10 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="value"
-                    stroke="#D9A441"
+                    stroke={chartColors.accent}
                     strokeWidth={2}
-                    dot={{ fill: "#D9A441", r: 3 }}
-                    activeDot={{ r: 5, fill: "#D9A441" }}
+                    dot={{ fill: chartColors.accent, r: 3 }}
+                    activeDot={{ r: 5, fill: chartColors.accent }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -499,16 +511,16 @@ export default function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={stackedData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#262A28" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: "#7A827C", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+                    tick={{ fill: chartColors.text, fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
                     axisLine={false}
                     tickLine={false}
                   />
                   <YAxis
                     tickFormatter={fmtShort}
-                    tick={{ fill: "#7A827C", fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
+                    tick={{ fill: chartColors.text, fontSize: 10, fontFamily: "var(--font-ibm-plex-mono)" }}
                     axisLine={false}
                     tickLine={false}
                     width={52}
@@ -518,8 +530,8 @@ export default function DashboardPage() {
                       `₹${fmt(value as number)}`,
                       TYPE_LABELS[name as string] ?? (name as string),
                     ]}
-                    contentStyle={CHART_STYLE}
-                    labelStyle={{ color: "#7A827C", fontSize: 10 }}
+                    contentStyle={chartStyle}
+                    labelStyle={{ color: chartColors.text, fontSize: 10 }}
                   />
                   {allTypes.map((t) => (
                     <Area
@@ -537,7 +549,7 @@ export default function DashboardPage() {
                     iconType="circle"
                     iconSize={7}
                     formatter={(value: string) => (
-                      <span style={{ fontSize: 11, color: "#7A827C" }}>
+                      <span style={{ fontSize: 11, color: chartColors.text }}>
                         {TYPE_LABELS[value] ?? value}
                       </span>
                     )}

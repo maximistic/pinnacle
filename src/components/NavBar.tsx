@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, TrendingUp, PieChart, Wallet, Upload, Camera, Settings } from "lucide-react";
+import { LayoutDashboard, TrendingUp, PieChart, Wallet, Upload, Camera, Settings, Sun, Moon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTheme } from "@/context/ThemeContext";
 
 type NavLink = { href: string; label: string; icon: LucideIcon };
 
@@ -19,11 +20,12 @@ const NAV_LINKS: NavLink[] = [
 
 export default function NavBar() {
   const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <>
       {/* Mobile: horizontal top bar — icon only */}
-      <header className="md:hidden flex items-center gap-0 h-12 px-3 border-b border-edge bg-surface shrink-0 sticky top-0 z-40">
+      <header className="dark md:hidden flex items-center gap-0 h-12 px-3 border-b border-edge bg-surface shrink-0 sticky top-0 z-40">
         <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-amber mr-3 shrink-0">
           P
         </span>
@@ -42,10 +44,17 @@ export default function NavBar() {
             </Link>
           );
         })}
+        <button
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="ml-auto flex items-center justify-center w-8 h-8 text-muted hover:text-foreground transition-colors"
+        >
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
       </header>
 
       {/* Desktop: left sidebar */}
-      <aside className="hidden md:flex flex-col w-55 sticky top-0 h-screen border-r border-edge bg-surface shrink-0">
+      <aside className="dark hidden md:flex flex-col w-55 sticky top-0 h-screen border-r border-edge bg-surface shrink-0">
         <div className="px-6 py-5 border-b border-edge">
           <span className="text-[11px] font-semibold tracking-[0.25em] uppercase text-amber">
             PINNACLE
@@ -90,6 +99,16 @@ export default function NavBar() {
             );
           })}
         </nav>
+        {/* Theme toggle */}
+        <div className="p-3">
+          <button
+            onClick={toggleTheme}
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            className="flex items-center justify-center w-8 h-8 text-muted hover:text-foreground transition-colors"
+          >
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
       </aside>
     </>
   );

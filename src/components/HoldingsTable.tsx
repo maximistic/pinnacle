@@ -1111,7 +1111,7 @@ export default function HoldingsTable({
                     className={selectCls}
                   >
                     {typeOptions.map((o) => (
-                      <option key={o.value} value={o.value} style={{ background: "#131615" }}>
+                      <option key={o.value} value={o.value} style={{ background: "var(--surface)" }}>
                         {o.label}
                       </option>
                     ))}
@@ -1454,7 +1454,7 @@ export default function HoldingsTable({
                                   className="w-full px-1.5 py-0.5 text-xs border border-edge bg-background text-foreground focus:outline-none focus:border-amber/60 transition-colors"
                                 >
                                   {typeOptions?.map((o) => (
-                                    <option key={o.value} value={o.value} style={{ background: "#131615" }}>{o.label}</option>
+                                    <option key={o.value} value={o.value} style={{ background: "var(--surface)" }}>{o.label}</option>
                                   ))}
                                 </select>
                               </td>
