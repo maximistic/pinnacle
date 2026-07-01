@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Auto-snapshot
-  const snapFreq = (process.env.SNAPSHOT_FREQUENCY ?? "OFF").toUpperCase();
+  const snapSetting = await prisma.setting.findUnique({ where: { key: "snapshotFrequency" } });
+  const snapFreq = ((snapSetting?.value ?? process.env.SNAPSHOT_FREQUENCY ?? "OFF")).toUpperCase();
   let snapshotCreated = false;
 
   if (shouldSnapshot(snapFreq, now)) {

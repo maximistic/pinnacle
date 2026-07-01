@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -44,4 +44,16 @@ export async function POST() {
       });
 
   return NextResponse.json(snapshot, { status: existing ? 200 : 201 });
+}
+
+export async function DELETE(request: NextRequest) {
+  const body = await request.json().catch(() => ({}));
+  if (body.all === true) {
+    const result = await prisma.snapshot.deleteMany();
+    return NextResponse.json({ count: result.count });
+  }
+  const ids: string[] = body.ids ?? [];
+  if (ids.length === 0) return NextResponse.json({ count: 0 });
+  const result = await prisma.snapshot.deleteMany({ where: { id: { in: ids } } });
+  return NextResponse.json({ count: result.count });
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { relativeTime } from "@/lib/utils";
+import { relativeTime, formatINR } from "@/lib/utils";
 import CSVImportMapper, { type ImportRow } from "@/components/CSVImportMapper";
 
 // ── Sort persistence ──────────────────────────────────────────────────────────
@@ -82,8 +82,8 @@ export type Holding = {
   isin: string | null;
   folioNumber: string | null;
   updatedAt: string;
-  currency: string;
-  exchangeRate: number | null;
+  currency?: string;
+  exchangeRate?: number | null;
 };
 
 export type TypeOption = { value: string; label: string };
@@ -132,6 +132,7 @@ type Props = {
   showIsin?: boolean;
   showFolioNumber?: boolean;
   onRowClick?: (holding: Holding) => void;
+  emptyMessage?: string;
   specialTypes?: string[];
   onSpecialTypeAdd?: (type: string) => void;
   recurringRulesByHoldingId?: Record<string, RecurringRuleMeta>;
@@ -150,7 +151,7 @@ const selectCls =
 // ── Utility functions ─────────────────────────────────────────────────────────
 
 function fmt(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatINR(n);
 }
 
 function calcPerUnit(value: number, qty: number | null): string {
@@ -243,6 +244,7 @@ export default function HoldingsTable({
   showIsin       = false,
   showFolioNumber = false,
   onRowClick,
+  emptyMessage,
   specialTypes,
   onSpecialTypeAdd,
   recurringRulesByHoldingId,
@@ -252,7 +254,6 @@ export default function HoldingsTable({
   const showTypeColumn = !!typeOptions;
   const hasExtraCols   = !!extraCols && showQuantity;
   const defaultType    = typeOptions?.[0]?.value ?? fixedType ?? "";
-
   const sortKey        = `pinnacle-sort-${title}`;
   const filterKey      = filterTypes?.join(",");
   const importStorageKey =
@@ -874,8 +875,12 @@ export default function HoldingsTable({
 
             ) : displayed.length === 0 ? (
               <tr>
-                <td colSpan={colCount} className="px-4 py-8 text-center text-xs text-muted">
-                  {search ? `No results for "${search}"` : "No entries yet. Add one above."}
+                <td colSpan={colCount} className="px-4 py-16 text-center">
+                  {search ? (
+                    <p className="text-xs text-muted">{`No results for "${search}"`}</p>
+                  ) : (
+                    <p className="text-sm text-muted">{emptyMessage ?? "No holdings yet."}</p>
+                  )}
                 </td>
               </tr>
 
@@ -1063,94 +1068,96 @@ export default function HoldingsTable({
                 </Field>
               )}
 
-              {isSpecialType ? (
+              {isSpecialType && (
                 <div className="py-3 px-4 border border-amber/20 bg-amber/3 text-xs text-muted leading-relaxed">
                   {form.type === "RD" && "Recurring Deposits require additional setup — installment amount, interest rate, and tenure."}
                   {form.type === "EPFO" && "EPFO requires additional setup — employee/employer contributions and start date."}
                   {form.type === "US_STOCK" && "US Stocks require additional setup — ticker, USD prices, and exchange rate."}
                 </div>
-              ) : (
-                <>
-                  <Field label="Name" required error={formErrors.name}>
-                    <input
-                      type="text"
-                      value={form.name}
-                      onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); clearFieldError("name"); }}
-                      className={inputCls}
-                      placeholder="Enter name"
-                    />
-                  </Field>
+              )}
 
-                  {showQuantity && (
-                    <Field label={quantityLabel} error={formErrors.quantity}>
-                      <input
-                        type="number"
-                        value={form.quantity}
-                        onChange={(e) => { setForm((f) => ({ ...f, quantity: e.target.value })); clearFieldError("quantity"); }}
-                        step="any" min="0"
-                        className={inputCls}
-                        placeholder="e.g. 10"
-                      />
-                    </Field>
-                  )}
+              {!isSpecialType && (
+              <>
+              <Field label="Name" required error={formErrors.name}>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => { setForm((f) => ({ ...f, name: e.target.value })); clearFieldError("name"); }}
+                  className={inputCls}
+                  placeholder="Enter name"
+                />
+              </Field>
 
-                  <Field label="Invested Value (₹)" required error={formErrors.investedValue}>
-                    <input
-                      type="number"
-                      value={form.investedValue}
-                      onChange={(e) => { setForm((f) => ({ ...f, investedValue: e.target.value })); clearFieldError("investedValue"); }}
-                      step="any" min="0"
-                      className={inputCls}
-                      placeholder="e.g. 50000"
-                    />
-                  </Field>
+              {showQuantity && (
+                <Field label={quantityLabel} error={formErrors.quantity}>
+                  <input
+                    type="number"
+                    value={form.quantity}
+                    onChange={(e) => { setForm((f) => ({ ...f, quantity: e.target.value })); clearFieldError("quantity"); }}
+                    step="any" min="0"
+                    className={inputCls}
+                    placeholder="e.g. 10"
+                  />
+                </Field>
+              )}
 
-                  <Field label="Current Value (₹)" required error={formErrors.currentValue}>
-                    <input
-                      type="number"
-                      value={form.currentValue}
-                      onChange={(e) => { setForm((f) => ({ ...f, currentValue: e.target.value })); clearFieldError("currentValue"); }}
-                      step="any" min="0"
-                      className={inputCls}
-                      placeholder="e.g. 55000"
-                    />
-                  </Field>
+              <Field label="Invested Value (₹)" required error={formErrors.investedValue}>
+                <input
+                  type="number"
+                  value={form.investedValue}
+                  onChange={(e) => { setForm((f) => ({ ...f, investedValue: e.target.value })); clearFieldError("investedValue"); }}
+                  step="any" min="0"
+                  className={inputCls}
+                  placeholder="e.g. 50000"
+                />
+              </Field>
 
-                  {showIsin && (
-                    <Field label="ISIN">
-                      <input
-                        type="text"
-                        value={form.isin}
-                        onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
-                        className={inputCls}
-                        placeholder="e.g. INE001A01036"
-                        maxLength={12}
-                      />
-                    </Field>
-                  )}
+              <Field label="Current Value (₹)" required error={formErrors.currentValue}>
+                <input
+                  type="number"
+                  value={form.currentValue}
+                  onChange={(e) => { setForm((f) => ({ ...f, currentValue: e.target.value })); clearFieldError("currentValue"); }}
+                  step="any" min="0"
+                  className={inputCls}
+                  placeholder="e.g. 55000"
+                />
+              </Field>
 
-                  {showFolioNumber && (
-                    <Field label="Folio Number">
-                      <input
-                        type="text"
-                        value={form.folioNumber}
-                        onChange={(e) => setForm((f) => ({ ...f, folioNumber: e.target.value }))}
-                        className={inputCls}
-                        placeholder="e.g. 1234567/89"
-                      />
-                    </Field>
-                  )}
+              {showIsin && (
+                <Field label="ISIN">
+                  <input
+                    type="text"
+                    value={form.isin}
+                    onChange={(e) => setForm((f) => ({ ...f, isin: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. INE001A01036"
+                    maxLength={12}
+                  />
+                </Field>
+              )}
 
-                  <Field label="Notes">
-                    <textarea
-                      value={form.notes}
-                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                      rows={2}
-                      className={`${inputCls} resize-none`}
-                      placeholder="Optional notes…"
-                    />
-                  </Field>
-                </>
+              {showFolioNumber && (
+                <Field label="Folio Number">
+                  <input
+                    type="text"
+                    value={form.folioNumber}
+                    onChange={(e) => setForm((f) => ({ ...f, folioNumber: e.target.value }))}
+                    className={inputCls}
+                    placeholder="e.g. 1234567/89"
+                  />
+                </Field>
+              )}
+
+              <Field label="Notes">
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  className={`${inputCls} resize-none`}
+                  placeholder="Optional notes…"
+                />
+              </Field>
+              </>
               )}
 
               <div className="flex gap-2 pt-1">

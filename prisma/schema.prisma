@@ -71,3 +71,8 @@ model Snapshot {
   totalValue Float
   breakdown  Json     // Record<type, { invested: number; current: number }>
 }
+
+model Setting {
+  key   String @id
+  value String
+}

@@ -10,6 +10,7 @@ export default function StocksPage() {
       quantityLabel="Qty"
       extraCols={{ avgLabel: "Avg Price", currentLabel: "Current Price" }}
       showIsin
+      emptyMessage="No stocks yet. Add your first stock or import from Zerodha CSV."
     />
   );
 }

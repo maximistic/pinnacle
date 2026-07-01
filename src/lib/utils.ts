@@ -11,3 +11,10 @@ export function relativeTime(iso: string): string {
   if (mos < 12) return `${mos} mo ago`;
   return `${Math.floor(mos / 12)} yr ago`;
 }
+
+export function formatINR(value: number): string {
+  return value.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

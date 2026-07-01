@@ -19,6 +19,7 @@ export default function MutualFundsPage() {
         showIsin
         showFolioNumber
         onRowClick={setSelected}
+        emptyMessage="No mutual funds yet. Upload your CAS or add manually."
       />
       <TransactionDrawer holding={selected} onClose={() => setSelected(null)} />
     </>

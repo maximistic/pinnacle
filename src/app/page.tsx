@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { relativeTime } from "@/lib/utils";
+import { relativeTime, formatINR } from "@/lib/utils";
 
 type Holding = {
   id: string;
@@ -67,7 +67,7 @@ const CHART_STYLE = {
 };
 
 function fmt(n: number) {
-  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatINR(n);
 }
 
 function csvEscape(val: string): string {

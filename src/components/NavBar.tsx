@@ -2,13 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, TrendingUp, PieChart, Wallet, Upload, Camera, Settings } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
-const NAV_LINKS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/stocks", label: "Stocks" },
-  { href: "/mutual-funds", label: "Mutual Funds" },
-  { href: "/others", label: "Others" },
-  { href: "/upload", label: "Upload CAS" },
+type NavLink = { href: string; label: string; icon: LucideIcon };
+
+const NAV_LINKS: NavLink[] = [
+  { href: "/",             label: "Dashboard",    icon: LayoutDashboard },
+  { href: "/stocks",       label: "Stocks",       icon: TrendingUp },
+  { href: "/mutual-funds", label: "Mutual Funds", icon: PieChart },
+  { href: "/others",       label: "Others",       icon: Wallet },
+  { href: "/upload",       label: "Upload CAS",   icon: Upload },
+  { href: "/snapshots",    label: "Snapshots",    icon: Camera },
+  { href: "/settings",     label: "Settings",     icon: Settings },
 ];
 
 export default function NavBar() {
@@ -16,24 +22,23 @@ export default function NavBar() {
 
   return (
     <>
-      {/* Mobile: horizontal top bar */}
-      <header className="md:hidden flex items-center gap-0.5 h-12 px-4 border-b border-edge bg-surface shrink-0 sticky top-0 z-40">
-        <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-amber mr-4">
-          PINNACLE
+      {/* Mobile: horizontal top bar — icon only */}
+      <header className="md:hidden flex items-center gap-0 h-12 px-3 border-b border-edge bg-surface shrink-0 sticky top-0 z-40">
+        <span className="text-[10px] font-semibold tracking-[0.2em] uppercase text-amber mr-3 shrink-0">
+          P
         </span>
-        {NAV_LINKS.map(({ href, label }) => {
-          const isActive = pathname === href;
+        {NAV_LINKS.map(({ href, icon: Icon, label }) => {
+          const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              className={`px-2.5 py-1 text-[10px] uppercase tracking-widest transition-colors ${
-                isActive
-                  ? "text-amber"
-                  : "text-muted hover:text-foreground"
+              title={label}
+              className={`flex items-center justify-center w-8 h-8 transition-colors ${
+                isActive ? "text-amber" : "text-muted hover:text-foreground"
               }`}
             >
-              {label}
+              <Icon size={16} />
             </Link>
           );
         })}
@@ -46,19 +51,40 @@ export default function NavBar() {
             PINNACLE
           </span>
         </div>
-        <nav className="flex flex-col gap-0.5 p-3 pt-4">
-          {NAV_LINKS.map(({ href, label }) => {
-            const isActive = pathname === href;
+        <nav className="flex flex-col gap-0.5 p-3 pt-4 flex-1">
+          {NAV_LINKS.slice(0, 5).map(({ href, label, icon: Icon }) => {
+            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center px-3 py-2.5 text-[11px] uppercase tracking-[0.12em] border-l-2 transition-colors ${
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-[11px] uppercase tracking-[0.12em] border-l-2 transition-colors ${
                   isActive
                     ? "border-amber text-amber bg-amber/5"
                     : "border-transparent text-muted hover:text-foreground hover:bg-white/3"
                 }`}
               >
+                <Icon size={14} className="shrink-0" />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+        {/* Bottom section: Snapshots + Settings */}
+        <nav className="flex flex-col gap-0.5 p-3 border-t border-edge">
+          {NAV_LINKS.slice(5).map(({ href, label, icon: Icon }) => {
+            const isActive = pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex items-center gap-2.5 px-3 py-2.5 text-[11px] uppercase tracking-[0.12em] border-l-2 transition-colors ${
+                  isActive
+                    ? "border-amber text-amber bg-amber/5"
+                    : "border-transparent text-muted hover:text-foreground hover:bg-white/3"
+                }`}
+              >
+                <Icon size={14} className="shrink-0" />
                 {label}
               </Link>
             );
